@@ -190,7 +190,7 @@ export function DashboardPage() {
             <h1 className="text-2xl font-bold text-text">Dashboard</h1>
             <p className="text-sm text-text-muted">{getMonthLabel(currentMonth)}</p>
           </div>
-          <Link to="/expenses/new" className="btn-primary">
+          <Link to="/expenses" className="btn-primary">
             <Plus className="h-4 w-4" />
             Add transaction
           </Link>

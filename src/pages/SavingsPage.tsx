@@ -1,15 +1,14 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useHousehold } from '@/contexts/HouseholdContext'
-import { formatCurrency, getCurrentMonth, getMonthLabel } from '@/lib/utils'
+import { formatCurrency } from '@/lib/utils'
 import { Layout } from '@/components/layout/Layout'
-import { Plus, PiggyBank, Target, TrendingUp, Pencil, Trash2, Wallet, Check, X } from 'lucide-react'
-import type { SavingsGoal, CashOnHand } from '@/types'
+import { Plus, PiggyBank, Target, Pencil, Trash2 } from 'lucide-react'
+import type { SavingsGoal } from '@/types'
 
 export function SavingsPage() {
   const { household } = useHousehold()
   const [goals, setGoals] = useState<SavingsGoal[]>([])
-  const [cashOnHand, setCashOnHand] = useState<CashOnHand | null>(null)
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [showContributionForm, setShowContributionForm] = useState<string | null>(null)
@@ -18,10 +17,6 @@ export function SavingsPage() {
   const [contributionForm, setContributionForm] = useState({ amount: '', notes: '' })
   const [saving, setSaving] = useState(false)
   const [contributionType, setContributionType] = useState<'contribution' | 'withdrawal'>('contribution')
-  const [editingCashTarget, setEditingCashTarget] = useState(false)
-  const [cashTargetInput, setCashTargetInput] = useState('')
-  const [cashAmountInput, setCashAmountInput] = useState('')
-  const currentMonth = getCurrentMonth()
 
   useEffect(() => {
     if (!household) return
@@ -32,22 +27,13 @@ export function SavingsPage() {
     if (!household) return
     setLoading(true)
 
-    const [goalsRes, cashRes] = await Promise.all([
-      supabase
-        .from('savings_goals')
-        .select('*')
-        .eq('household_id', household.id)
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('cash_on_hand')
-        .select('*')
-        .eq('household_id', household.id)
-        .eq('month', currentMonth)
-        .single(),
-    ])
+    const { data } = await supabase
+      .from('savings_goals')
+      .select('*')
+      .eq('household_id', household.id)
+      .order('created_at', { ascending: false })
 
-    setGoals(goalsRes.data || [])
-    setCashOnHand(cashRes.data)
+    setGoals(data || [])
     setLoading(false)
   }
 
@@ -121,24 +107,6 @@ export function SavingsPage() {
     await fetchData()
   }
 
-  const handleUpdateCashOnHand = async (amount: number) => {
-    if (!cashOnHand) return
-    await supabase
-      .from('cash_on_hand')
-      .update({ current_amount: Math.max(0, amount) })
-      .eq('id', cashOnHand.id)
-    await fetchData()
-  }
-
-  const handleSaveCashTarget = async (target: number) => {
-    if (!cashOnHand || !household) return
-    await supabase
-      .from('cash_on_hand')
-      .update({ target_amount: Math.max(0, target) })
-      .eq('id', cashOnHand.id)
-    await fetchData()
-  }
-
   const totalSaved = goals.reduce((sum, g) => sum + g.current_amount, 0)
   const totalTarget = goals.reduce((sum, g) => sum + g.target_amount, 0)
 
@@ -147,8 +115,8 @@ export function SavingsPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-text">Savings & Cash</h1>
-            <p className="text-sm text-text-muted">Track savings goals and cash-on-hand</p>
+            <h1 className="text-2xl font-bold text-text">Savings</h1>
+            <p className="text-sm text-text-muted">Track your savings goals</p>
           </div>
           <button
             onClick={() => { setShowForm(true); setEditingGoal(null); setForm({ name: '', target_amount: '', target_date: '', notes: '' }) }}
@@ -160,7 +128,7 @@ export function SavingsPage() {
         </div>
 
         {/* Summary */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="stat-card">
             <PiggyBank className="h-5 w-5 text-cta" />
             <p className="stat-value">{formatCurrency(totalSaved)}</p>
@@ -171,111 +139,7 @@ export function SavingsPage() {
             <p className="stat-value">{formatCurrency(totalTarget)}</p>
             <p className="stat-label">Total target</p>
           </div>
-          <div className="stat-card">
-            <TrendingUp className="h-5 w-5 text-success" />
-            <p className="stat-value">{formatCurrency(cashOnHand?.current_amount || 0)}</p>
-            <p className="stat-label">Cash on hand ({getMonthLabel(currentMonth)})</p>
-          </div>
         </div>
-
-        {/* Cash on hand */}
-        {cashOnHand && (
-          <div className="card">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10">
-                  <Wallet className="h-5 w-5 text-accent" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-text">Cash on hand</h2>
-                  <p className="text-sm text-text-muted">Physical cash for everyday spending</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Current amount - read only */}
-            <div className="mb-4">
-              <div className="flex items-center justify-between text-sm mb-1">
-                <span className="text-text-muted">Current balance</span>
-                <span className="text-xl font-bold text-accent">{formatCurrency(cashOnHand.current_amount)}</span>
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-surface-alt">
-                <div
-                  className="h-full bg-accent transition-all"
-                  style={{ width: `${cashOnHand.target_amount > 0 ? Math.min((cashOnHand.current_amount / cashOnHand.target_amount) * 100, 100) : 0}%` }}
-                />
-              </div>
-              {cashOnHand.target_amount > 0 && (
-                <p className="mt-1 text-xs text-text-muted">
-                  {((cashOnHand.current_amount / cashOnHand.target_amount) * 100).toFixed(0)}% of target
-                </p>
-              )}
-            </div>
-
-            {/* How to change cash on hand */}
-            <div className="rounded-lg bg-surface-alt p-3 mb-3">
-              <p className="text-xs font-medium text-text-muted mb-2">To change your cash balance:</p>
-              <ul className="text-xs text-text-muted space-y-1">
-                <li>• <strong>Add cash:</strong> Record an income to your cash account</li>
-                <li>• <strong>Spend cash:</strong> Record an expense from your cash account</li>
-                <li>• <strong>ATM withdrawal:</strong> Transfer from bank to cash account</li>
-              </ul>
-            </div>
-
-            {/* Target setting */}
-            <div className="rounded-lg border border-border p-3">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-text-muted">Monthly target</p>
-                {editingCashTarget ? (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      value={cashTargetInput}
-                      onChange={(e) => setCashTargetInput(e.target.value)}
-                      className="input-field w-32 text-sm"
-                      placeholder="Target"
-                    />
-                    <button
-                      onClick={() => {
-                        const target = parseInt(cashTargetInput) || 0
-                        handleSaveCashTarget(target)
-                        setEditingCashTarget(false)
-                      }}
-                      className="rounded-lg p-1.5 text-success hover:bg-success/5 cursor-pointer"
-                    >
-                      <Check className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => setEditingCashTarget(false)}
-                      className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => {
-                      setEditingCashTarget(true)
-                      setCashTargetInput(String(cashOnHand.target_amount))
-                    }}
-                    className="text-sm font-medium text-cta hover:text-cta-light cursor-pointer"
-                  >
-                    {formatCurrency(cashOnHand.target_amount)} <Pencil className="inline h-3 w-3" />
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-              </div>
-              {cashOnHand.target_amount > 0 && (
-                <p className="mt-1 text-xs text-text-muted">
-                  {((cashOnHand.current_amount / cashOnHand.target_amount) * 100).toFixed(0)}% of target reached
-                </p>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* Goal form */}
         {showForm && (
