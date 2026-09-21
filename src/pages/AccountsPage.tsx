@@ -94,7 +94,7 @@ export function AccountsPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-text">Accounts</h1>
-            <p className="text-sm text-text-muted">Manage your household accounts</p>
+            <p className="text-sm text-text-muted">Manage your household accounts and cash on hand</p>
           </div>
           <button
             onClick={() => { setShowForm(true); setEditingAccount(null); setForm({ name: '', type: 'bank', balance: '' }) }}
@@ -103,6 +103,16 @@ export function AccountsPage() {
             <Plus className="h-4 w-4" />
             Add account
           </button>
+        </div>
+
+        {/* Info box */}
+        <div className="rounded-lg bg-cta/5 border border-cta/20 p-4">
+          <p className="text-sm font-medium text-text">Setting up your accounts</p>
+          <ul className="mt-2 text-xs text-text-muted space-y-1">
+            <li>• <strong>Bank account:</strong> For money in your bank</li>
+            <li>• <strong>Cash:</strong> For physical cash on hand — enter your current cash balance as the opening balance</li>
+            <li>• <strong>Savings:</strong> For money set aside in savings</li>
+          </ul>
         </div>
 
         {/* Total balance */}

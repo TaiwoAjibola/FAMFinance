@@ -188,15 +188,15 @@ export function SavingsPage() {
                 </div>
                 <div>
                   <h2 className="text-lg font-semibold text-text">Cash on hand</h2>
-                  <p className="text-sm text-text-muted">Physical cash available for everyday spending</p>
+                  <p className="text-sm text-text-muted">Physical cash for everyday spending</p>
                 </div>
               </div>
             </div>
 
-            {/* Current amount */}
+            {/* Current amount - read only */}
             <div className="mb-4">
               <div className="flex items-center justify-between text-sm mb-1">
-                <span className="text-text-muted">Current cash</span>
+                <span className="text-text-muted">Current balance</span>
                 <span className="text-xl font-bold text-accent">{formatCurrency(cashOnHand.current_amount)}</span>
               </div>
               <div className="h-2 overflow-hidden rounded-full bg-surface-alt">
@@ -205,52 +205,21 @@ export function SavingsPage() {
                   style={{ width: `${cashOnHand.target_amount > 0 ? Math.min((cashOnHand.current_amount / cashOnHand.target_amount) * 100, 100) : 0}%` }}
                 />
               </div>
+              {cashOnHand.target_amount > 0 && (
+                <p className="mt-1 text-xs text-text-muted">
+                  {((cashOnHand.current_amount / cashOnHand.target_amount) * 100).toFixed(0)}% of target
+                </p>
+              )}
             </div>
 
-            {/* Set initial cash or adjust */}
-            <div className="rounded-lg border border-border p-3 mb-3">
-              <p className="text-xs font-medium text-text-muted mb-2">How much cash do you have right now?</p>
-              <div className="flex gap-2">
-                <input
-                  type="number"
-                  value={cashAmountInput}
-                  onChange={(e) => setCashAmountInput(e.target.value)}
-                  className="input-field flex-1"
-                  placeholder="Enter amount"
-                />
-                <button
-                  onClick={() => {
-                    const amount = parseInt(cashAmountInput) || 0
-                    if (amount > 0) {
-                      handleUpdateCashOnHand(amount)
-                      setCashAmountInput('')
-                    }
-                  }}
-                  className="btn-primary text-sm"
-                >
-                  Set amount
-                </button>
-              </div>
-              <div className="flex gap-2 mt-2">
-                <button
-                  onClick={() => handleUpdateCashOnHand(cashOnHand.current_amount + 5000)}
-                  className="btn-secondary text-xs"
-                >
-                  + Add ₦5k
-                </button>
-                <button
-                  onClick={() => handleUpdateCashOnHand(cashOnHand.current_amount + 10000)}
-                  className="btn-secondary text-xs"
-                >
-                  + Add ₦10k
-                </button>
-                <button
-                  onClick={() => handleUpdateCashOnHand(cashOnHand.current_amount + 20000)}
-                  className="btn-secondary text-xs"
-                >
-                  + Add ₦20k
-                </button>
-              </div>
+            {/* How to change cash on hand */}
+            <div className="rounded-lg bg-surface-alt p-3 mb-3">
+              <p className="text-xs font-medium text-text-muted mb-2">To change your cash balance:</p>
+              <ul className="text-xs text-text-muted space-y-1">
+                <li>• <strong>Add cash:</strong> Record an income to your cash account</li>
+                <li>• <strong>Spend cash:</strong> Record an expense from your cash account</li>
+                <li>• <strong>ATM withdrawal:</strong> Transfer from bank to cash account</li>
+              </ul>
             </div>
 
             {/* Target setting */}
@@ -294,6 +263,10 @@ export function SavingsPage() {
                     {formatCurrency(cashOnHand.target_amount)} <Pencil className="inline h-3 w-3" />
                   </button>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
               </div>
               {cashOnHand.target_amount > 0 && (
                 <p className="mt-1 text-xs text-text-muted">
