@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useHousehold } from '@/contexts/HouseholdContext'
-import { formatCurrency, getCurrentMonth, getMonthLabel } from '@/lib/utils'
+import { formatCurrency, getCurrentMonth, getMonthLabel, getMonthStart, getMonthEnd } from '@/lib/utils'
 import { Layout } from '@/components/layout/Layout'
 import {
   Wallet,
@@ -63,15 +63,15 @@ export function DashboardPage() {
             .select('amount, type, category:categories(name)')
             .eq('household_id', household.id)
             .eq('type', 'income')
-            .gte('date', `${currentMonth}-01`)
-            .lt('date', `${currentMonth}-32`),
+            .gte('date', getMonthStart(currentMonth))
+            .lt('date', getMonthEnd(currentMonth)),
           supabase
             .from('transactions')
             .select('amount, type, category:categories(name)')
             .eq('household_id', household.id)
             .eq('type', 'expense')
-            .gte('date', `${currentMonth}-01`)
-            .lt('date', `${currentMonth}-32`),
+            .gte('date', getMonthStart(currentMonth))
+            .lt('date', getMonthEnd(currentMonth)),
           supabase
             .from('accounts')
             .select('name, balance, type')
@@ -95,8 +95,8 @@ export function DashboardPage() {
             .from('savings_contributions')
             .select('amount, type, savings_goal:savings_goals(household_id)')
             .eq('type', 'contribution')
-            .gte('date', `${currentMonth}-01`)
-            .lt('date', `${currentMonth}-32`),
+            .gte('date', getMonthStart(currentMonth))
+            .lt('date', getMonthEnd(currentMonth)),
           supabase
             .from('cash_on_hand')
             .select('current_amount')

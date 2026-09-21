@@ -49,6 +49,16 @@ export function getMonthLabel(month: string): string {
   return date.toLocaleDateString('en-NG', { year: 'numeric', month: 'long' })
 }
 
+export function getMonthStart(month: string): string {
+  return `${month}-01`
+}
+
+export function getMonthEnd(month: string): string {
+  const [year, m] = month.split('-')
+  const nextMonth = new Date(parseInt(year), parseInt(m), 1)
+  return nextMonth.toISOString().split('T')[0]
+}
+
 export function generateId(): string {
   return crypto.randomUUID()
 }
