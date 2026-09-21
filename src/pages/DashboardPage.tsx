@@ -234,27 +234,36 @@ export function DashboardPage() {
                 <Wallet className="h-4 w-4 text-accent" />
               </div>
             </div>
-            <p className="stat-value text-accent">{formatCurrency(data.cashOnHand)}</p>
-            <p className="stat-label">Cash on hand</p>
+            <p className="stat-value text-accent">{formatCurrency(totalBalance + data.cashOnHand)}</p>
+            <p className="stat-label">Total cash available</p>
           </div>
         </div>
 
         {/* Balance overview */}
         <div className="card">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-text">Available Balance</h2>
+            <h2 className="text-lg font-semibold text-text">Cash Breakdown</h2>
             <Link to="/accounts" className="text-sm font-medium text-cta hover:text-cta-light flex items-center gap-1 cursor-pointer">
               View all <ArrowRight className="h-3 w-3" />
             </Link>
           </div>
-          <p className="text-3xl font-bold text-text">{formatCurrency(totalBalance)}</p>
-          <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="space-y-3">
             {data.accountBalances.map((account) => (
-              <div key={account.name} className="flex items-center justify-between rounded-lg bg-surface-alt p-3">
+              <div key={account.name} className="flex items-center justify-between">
                 <span className="text-sm text-text-muted">{account.name}</span>
                 <span className="text-sm font-medium text-text">{formatCurrency(account.balance)}</span>
               </div>
             ))}
+            {data.cashOnHand > 0 && (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-text-muted">Physical cash on hand</span>
+                <span className="text-sm font-medium text-accent">{formatCurrency(data.cashOnHand)}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between border-t border-border pt-3">
+              <span className="text-sm font-medium text-text">Total available</span>
+              <span className="text-lg font-bold text-text">{formatCurrency(totalBalance + data.cashOnHand)}</span>
+            </div>
           </div>
         </div>
 
