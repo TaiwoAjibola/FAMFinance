@@ -59,6 +59,18 @@ export function getMonthEnd(month: string): string {
   return nextMonth.toISOString().split('T')[0]
 }
 
+export function previousMonth(month: string): string {
+  const [year, m] = month.split('-')
+  const date = new Date(parseInt(year), parseInt(m) - 2, 1)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+}
+
+export function nextMonth(month: string): string {
+  const [year, m] = month.split('-')
+  const date = new Date(parseInt(year), parseInt(m), 1)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+}
+
 export function generateId(): string {
   return crypto.randomUUID()
 }

@@ -113,7 +113,8 @@ CREATE TABLE IF NOT EXISTS budget_items (
   budget_id UUID NOT NULL REFERENCES monthly_budgets(id) ON DELETE CASCADE,
   category_id UUID NOT NULL REFERENCES categories(id),
   budgeted_amount INTEGER NOT NULL DEFAULT 0,
-  spent_amount INTEGER NOT NULL DEFAULT 0
+  spent_amount INTEGER NOT NULL DEFAULT 0,
+  is_recurring BOOLEAN NOT NULL DEFAULT false
 );
 
 -- Planned expenses

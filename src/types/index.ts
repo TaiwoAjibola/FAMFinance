@@ -120,6 +120,7 @@ export interface BudgetItem {
   category_id: string
   budgeted_amount: number
   spent_amount: number
+  is_recurring: boolean
   category?: Category
 }
 
