@@ -82,7 +82,7 @@ export function SetupPage() {
         household_id: hh.id,
         month,
         target_amount: 133000,
-        current_amount: 133000,
+        current_amount: 0,
       })
     }
 
