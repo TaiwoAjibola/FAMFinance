@@ -53,28 +53,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const signUp = async (email: string, password: string, fullName: string) => {
-    const redirectUrl = `${window.location.origin}/`
-    const { data, error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: {
-        data: { full_name: fullName },
-        emailRedirectTo: redirectUrl,
-      },
+      options: { data: { full_name: fullName } },
     })
     if (error) return { error: error.message }
-
-    // If email confirmation is disabled, user is auto-signed-in
-    // Update local state immediately
-    if (data.user) {
-      setUser({
-        id: data.user.id,
-        email: data.user.email || '',
-        full_name: data.user.user_metadata?.full_name || '',
-        created_at: data.user.created_at,
-      })
-    }
-
     return {}
   }
 
