@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { useHousehold } from '@/contexts/HouseholdContext'
 import { formatCurrency, getCurrentMonth, getMonthLabel } from '@/lib/utils'
 import { Layout } from '@/components/layout/Layout'
-import { Plus, PiggyBank, Target, TrendingUp, Pencil, Trash2, ArrowDownCircle, ArrowUpCircle } from 'lucide-react'
+import { Plus, PiggyBank, Target, TrendingUp, Pencil, Trash2, Wallet, Check, X } from 'lucide-react'
 import type { SavingsGoal, CashOnHand } from '@/types'
 
 export function SavingsPage() {
@@ -18,6 +18,9 @@ export function SavingsPage() {
   const [contributionForm, setContributionForm] = useState({ amount: '', notes: '' })
   const [saving, setSaving] = useState(false)
   const [contributionType, setContributionType] = useState<'contribution' | 'withdrawal'>('contribution')
+  const [editingCashTarget, setEditingCashTarget] = useState(false)
+  const [cashTargetInput, setCashTargetInput] = useState('')
+  const [cashAmountInput, setCashAmountInput] = useState('')
   const currentMonth = getCurrentMonth()
 
   useEffect(() => {
@@ -122,7 +125,16 @@ export function SavingsPage() {
     if (!cashOnHand) return
     await supabase
       .from('cash_on_hand')
-      .update({ current_amount: amount })
+      .update({ current_amount: Math.max(0, amount) })
+      .eq('id', cashOnHand.id)
+    await fetchData()
+  }
+
+  const handleSaveCashTarget = async (target: number) => {
+    if (!cashOnHand || !household) return
+    await supabase
+      .from('cash_on_hand')
+      .update({ target_amount: Math.max(0, target) })
       .eq('id', cashOnHand.id)
     await fetchData()
   }
@@ -170,38 +182,125 @@ export function SavingsPage() {
         {cashOnHand && (
           <div className="card">
             <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-lg font-semibold text-text">Cash-on-hand</h2>
-                <p className="text-sm text-text-muted">
-                  Target: {formatCurrency(cashOnHand.target_amount)} • Current: {formatCurrency(cashOnHand.current_amount)}
-                </p>
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10">
+                  <Wallet className="h-5 w-5 text-accent" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-text">Cash on hand</h2>
+                  <p className="text-sm text-text-muted">Physical cash available for everyday spending</p>
+                </div>
               </div>
+            </div>
+
+            {/* Current amount */}
+            <div className="mb-4">
+              <div className="flex items-center justify-between text-sm mb-1">
+                <span className="text-text-muted">Current cash</span>
+                <span className="text-xl font-bold text-accent">{formatCurrency(cashOnHand.current_amount)}</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-surface-alt">
+                <div
+                  className="h-full bg-accent transition-all"
+                  style={{ width: `${cashOnHand.target_amount > 0 ? Math.min((cashOnHand.current_amount / cashOnHand.target_amount) * 100, 100) : 0}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Set initial cash or adjust */}
+            <div className="rounded-lg border border-border p-3 mb-3">
+              <p className="text-xs font-medium text-text-muted mb-2">How much cash do you have right now?</p>
               <div className="flex gap-2">
+                <input
+                  type="number"
+                  value={cashAmountInput}
+                  onChange={(e) => setCashAmountInput(e.target.value)}
+                  className="input-field flex-1"
+                  placeholder="Enter amount"
+                />
+                <button
+                  onClick={() => {
+                    const amount = parseInt(cashAmountInput) || 0
+                    if (amount > 0) {
+                      handleUpdateCashOnHand(amount)
+                      setCashAmountInput('')
+                    }
+                  }}
+                  className="btn-primary text-sm"
+                >
+                  Set amount
+                </button>
+              </div>
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={() => handleUpdateCashOnHand(cashOnHand.current_amount + 5000)}
+                  className="btn-secondary text-xs"
+                >
+                  + Add ₦5k
+                </button>
                 <button
                   onClick={() => handleUpdateCashOnHand(cashOnHand.current_amount + 10000)}
                   className="btn-secondary text-xs"
                 >
-                  <ArrowDownCircle className="h-3 w-3" />
-                  Add ₦10k
+                  + Add ₦10k
                 </button>
                 <button
-                  onClick={() => handleUpdateCashOnHand(Math.max(0, cashOnHand.current_amount - 10000))}
+                  onClick={() => handleUpdateCashOnHand(cashOnHand.current_amount + 20000)}
                   className="btn-secondary text-xs"
                 >
-                  <ArrowUpCircle className="h-3 w-3" />
-                  Spend ₦10k
+                  + Add ₦20k
                 </button>
               </div>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-surface-alt">
-              <div
-                className="h-full bg-accent transition-all"
-                style={{ width: `${Math.min((cashOnHand.current_amount / cashOnHand.target_amount) * 100, 100)}%` }}
-              />
+
+            {/* Target setting */}
+            <div className="rounded-lg border border-border p-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-text-muted">Monthly target</p>
+                {editingCashTarget ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      value={cashTargetInput}
+                      onChange={(e) => setCashTargetInput(e.target.value)}
+                      className="input-field w-32 text-sm"
+                      placeholder="Target"
+                    />
+                    <button
+                      onClick={() => {
+                        const target = parseInt(cashTargetInput) || 0
+                        handleSaveCashTarget(target)
+                        setEditingCashTarget(false)
+                      }}
+                      className="rounded-lg p-1.5 text-success hover:bg-success/5 cursor-pointer"
+                    >
+                      <Check className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => setEditingCashTarget(false)}
+                      className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setEditingCashTarget(true)
+                      setCashTargetInput(String(cashOnHand.target_amount))
+                    }}
+                    className="text-sm font-medium text-cta hover:text-cta-light cursor-pointer"
+                  >
+                    {formatCurrency(cashOnHand.target_amount)} <Pencil className="inline h-3 w-3" />
+                  </button>
+                )}
+              </div>
+              {cashOnHand.target_amount > 0 && (
+                <p className="mt-1 text-xs text-text-muted">
+                  {((cashOnHand.current_amount / cashOnHand.target_amount) * 100).toFixed(0)}% of target reached
+                </p>
+              )}
             </div>
-            <p className="mt-2 text-xs text-text-muted">
-              {((cashOnHand.current_amount / cashOnHand.target_amount) * 100).toFixed(0)}% of target
-            </p>
           </div>
         )}
 
