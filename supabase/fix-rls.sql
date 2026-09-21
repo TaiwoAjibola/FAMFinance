@@ -26,8 +26,11 @@ END $$;
 
 -- Users
 CREATE POLICY "Users can view own profile" ON users FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "Users can insert own profile" ON users FOR INSERT WITH CHECK (auth.uid() = id);
 
--- Households
+-- Households: owner can do everything, members can view
+CREATE POLICY "Owner can manage household" ON households FOR ALL
+  USING (owner_id = auth.uid());
 CREATE POLICY "Members can view household" ON households FOR SELECT
   USING (owner_id = auth.uid() OR is_household_member(id));
 
