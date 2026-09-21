@@ -23,7 +23,6 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
     if (!user) {
       setHousehold(null)
       setMembers([])
-      setLoading(false)
       return
     }
 

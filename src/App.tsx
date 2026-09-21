@@ -18,7 +18,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading: authLoading } = useAuth()
   const { household, loading: hhLoading } = useHousehold()
 
-  if (authLoading || hhLoading) {
+  if (authLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-primary">
         <div className="text-center">
@@ -30,6 +30,16 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (!user) return <Navigate to="/login" replace />
+  if (hhLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-primary">
+        <div className="text-center">
+          <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-accent border-t-transparent" />
+          <p className="mt-3 text-sm text-text-light">Loading...</p>
+        </div>
+      </div>
+    )
+  }
   if (!household) return <Navigate to="/setup" replace />
 
   return <>{children}</>
