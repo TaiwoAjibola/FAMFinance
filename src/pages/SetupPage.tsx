@@ -44,7 +44,7 @@ export function SetupPage() {
       return
     }
 
-    // Seed default categories
+    // Seed default categories only — no hardcoded amounts
     const { data: hh } = await supabase
       .from('households')
       .select('id')
@@ -69,20 +69,17 @@ export function SetupPage() {
 
       await supabase.from('categories').insert(categories)
 
-      // Seed initial monthly budget
+      // Create empty budget for current month — user sets targets
       const month = getCurrentMonth()
       await supabase.from('monthly_budgets').insert({
         household_id: hh.id,
         month,
-        cash_on_hand_target: 133000,
       })
 
-      // Seed cash on hand
+      // Create empty cash on hand — user sets target
       await supabase.from('cash_on_hand').insert({
         household_id: hh.id,
         month,
-        target_amount: 133000,
-        current_amount: 0,
       })
     }
 
