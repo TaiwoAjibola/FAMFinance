@@ -39,10 +39,6 @@ export function BudgetPage() {
   const [showPayments, setShowPayments] = useState<string | null>(null)
   const [itemPayments, setItemPayments] = useState<Record<string, BudgetPayment[]>>({})
 
-  // Cash on hand
-  const [editingCashTarget, setEditingCashTarget] = useState(false)
-  const [cashTargetInput, setCashTargetInput] = useState('')
-
   // Category management
   const [showCategories, setShowCategories] = useState(false)
   const [addingCategory, setAddingCategory] = useState(false)
@@ -228,16 +224,6 @@ export function BudgetPage() {
     await fetchData()
   }
 
-  const handleUpdateCashTarget = async () => {
-    if (!budget) return
-    await supabase
-      .from('monthly_budgets')
-      .update({ cash_on_hand_target: parseInt(cashTargetInput) || 0 })
-      .eq('id', budget.id)
-    setEditingCashTarget(false)
-    await fetchData()
-  }
-
   // --- Payment recording ---
 
   const handleRecordPayment = async (item: BudgetItem) => {
@@ -245,6 +231,19 @@ export function BudgetPage() {
     const amount = parseInt(payForm.amount) || 0
     if (amount <= 0) return
     setPaying(true)
+
+    // Get current account balance
+    const { data: account } = await supabase
+      .from('accounts')
+      .select('balance')
+      .eq('id', payForm.account_id)
+      .single()
+
+    if (!account || account.balance < amount) {
+      alert('Insufficient balance in this account')
+      setPaying(false)
+      return
+    }
 
     // 1. Create transaction
     const { data: txn } = await supabase
@@ -264,7 +263,13 @@ export function BudgetPage() {
       .select()
       .single()
 
-    // 2. Create budget payment
+    // 2. Deduct from account balance
+    await supabase
+      .from('accounts')
+      .update({ balance: account.balance - amount })
+      .eq('id', payForm.account_id)
+
+    // 3. Create budget payment
     await supabase.from('budget_payments').insert({
       budget_item_id: item.id,
       amount,
@@ -274,7 +279,7 @@ export function BudgetPage() {
       transaction_id: txn?.id || null,
     })
 
-    // 3. Update spent_amount on budget item
+    // 4. Update spent_amount on budget item
     const newSpent = (item.spent_amount || 0) + amount
     await supabase
       .from('budget_items')
@@ -348,26 +353,6 @@ export function BudgetPage() {
                 </p>
               </div>
             </div>
-
-            {/* Cash on hand target */}
-            {budget && (
-              <div className="card">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-text-muted">Cash on hand target</p>
-                  {editingCashTarget ? (
-                    <div className="flex items-center gap-2">
-                      <input type="number" value={cashTargetInput} onChange={(e) => setCashTargetInput(e.target.value)} className="input-field w-36 text-sm" placeholder="Target" />
-                      <button onClick={handleUpdateCashTarget} className="rounded-lg p-1.5 text-success hover:bg-success/5 cursor-pointer"><Check className="h-4 w-4" /></button>
-                      <button onClick={() => setEditingCashTarget(false)} className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer"><X className="h-4 w-4" /></button>
-                    </div>
-                  ) : (
-                    <button onClick={() => { setEditingCashTarget(true); setCashTargetInput(String(budget.cash_on_hand_target || 0)) }} className="text-sm font-medium text-cta hover:text-cta-light cursor-pointer">
-                      {formatCurrency(budget.cash_on_hand_target || 0)} <Pencil className="inline h-3 w-3" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
 
             {/* Category management */}
             <div className="card">

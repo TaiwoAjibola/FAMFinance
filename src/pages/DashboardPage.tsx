@@ -19,9 +19,7 @@ interface DashboardData {
   totalIncome: number
   expectedIncome: number
   totalExpenses: number
-  operatingExpenses: number
   savingsContributed: number
-  cashOnHand: number
   accountBalances: { name: string; balance: number; type: string }[]
   upcomingPlanned: { title: string; amount: number; due_date: string }[]
   recentTransactions: {
@@ -40,9 +38,7 @@ export function DashboardPage() {
     totalIncome: 0,
     expectedIncome: 0,
     totalExpenses: 0,
-    operatingExpenses: 0,
     savingsContributed: 0,
-    cashOnHand: 0,
     accountBalances: [],
     upcomingPlanned: [],
     recentTransactions: [],
@@ -56,7 +52,7 @@ export function DashboardPage() {
     const fetchDashboard = async () => {
       setLoading(true)
 
-      const [incomeRes, expenseRes, accountRes, plannedRes, transactionRes, savingsRes, cashRes] =
+      const [incomeRes, expenseRes, accountRes, plannedRes, transactionRes, savingsRes] =
         await Promise.all([
           supabase
             .from('transactions')
@@ -97,33 +93,10 @@ export function DashboardPage() {
             .eq('type', 'contribution')
             .gte('date', getMonthStart(currentMonth))
             .lt('date', getMonthEnd(currentMonth)),
-          supabase
-            .from('cash_on_hand')
-            .select('current_amount')
-            .eq('household_id', household.id)
-            .eq('month', currentMonth)
-            .single(),
         ])
 
       const income = (incomeRes.data || []).reduce((sum, t) => sum + t.amount, 0)
       const expenses = (expenseRes.data || []).reduce((sum, t) => sum + t.amount, 0)
-      const operating = (expenseRes.data || [])
-        .filter((t) => {
-          const cat = t.category as unknown as { name: string } | null
-          return cat && [
-            'Food and food-related',
-            'Transportation',
-            "Daughter's needs",
-            'Other household costs',
-            'Internet',
-            'Theological seminary',
-            'Cooking gas',
-            'Water',
-            'Electricity',
-            'Dustbin',
-          ].includes(cat.name)
-        })
-        .reduce((sum, t) => sum + t.amount, 0)
 
       const savings = (savingsRes.data || [])
         .filter((c) => {
@@ -136,9 +109,7 @@ export function DashboardPage() {
         totalIncome: income,
         expectedIncome: 0,
         totalExpenses: expenses,
-        operatingExpenses: operating,
         savingsContributed: savings,
-        cashOnHand: cashRes.data?.current_amount || 0,
         accountBalances: (accountRes.data || []).map((a) => ({
           name: a.name,
           balance: a.balance,
@@ -234,7 +205,7 @@ export function DashboardPage() {
                 <Wallet className="h-4 w-4 text-accent" />
               </div>
             </div>
-            <p className="stat-value text-accent">{formatCurrency(totalBalance + data.cashOnHand)}</p>
+            <p className="stat-value text-accent">{formatCurrency(totalBalance)}</p>
             <p className="stat-label">Total cash available</p>
           </div>
         </div>
@@ -254,15 +225,9 @@ export function DashboardPage() {
                 <span className="text-sm font-medium text-text">{formatCurrency(account.balance)}</span>
               </div>
             ))}
-            {data.cashOnHand > 0 && (
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-text-muted">Physical cash on hand</span>
-                <span className="text-sm font-medium text-accent">{formatCurrency(data.cashOnHand)}</span>
-              </div>
-            )}
             <div className="flex items-center justify-between border-t border-border pt-3">
               <span className="text-sm font-medium text-text">Total available</span>
-              <span className="text-lg font-bold text-text">{formatCurrency(totalBalance + data.cashOnHand)}</span>
+              <span className="text-lg font-bold text-text">{formatCurrency(totalBalance)}</span>
             </div>
           </div>
         </div>
