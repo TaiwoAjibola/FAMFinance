@@ -111,7 +111,8 @@ CREATE TABLE IF NOT EXISTS monthly_budgets (
 CREATE TABLE IF NOT EXISTS budget_items (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   budget_id UUID NOT NULL REFERENCES monthly_budgets(id) ON DELETE CASCADE,
-  category_id UUID NOT NULL REFERENCES categories(id),
+  category_id UUID REFERENCES categories(id),
+  custom_name TEXT,
   budgeted_amount INTEGER NOT NULL DEFAULT 0,
   spent_amount INTEGER NOT NULL DEFAULT 0,
   is_recurring BOOLEAN NOT NULL DEFAULT false

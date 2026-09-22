@@ -117,7 +117,8 @@ export interface MonthlyBudget {
 export interface BudgetItem {
   id: string
   budget_id: string
-  category_id: string
+  category_id?: string
+  custom_name?: string
   budgeted_amount: number
   spent_amount: number
   is_recurring: boolean
