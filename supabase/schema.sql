@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   receipt_url TEXT,
   planned_expense_id UUID,
   installment_payment_id UUID,
+  budget_item_id UUID REFERENCES budget_items(id),
   created_by UUID NOT NULL REFERENCES users(id),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -116,6 +117,18 @@ CREATE TABLE IF NOT EXISTS budget_items (
   budgeted_amount INTEGER NOT NULL DEFAULT 0,
   spent_amount INTEGER NOT NULL DEFAULT 0,
   is_recurring BOOLEAN NOT NULL DEFAULT false
+);
+
+-- Budget payments (individual payments against budget items)
+CREATE TABLE IF NOT EXISTS budget_payments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  budget_item_id UUID NOT NULL REFERENCES budget_items(id) ON DELETE CASCADE,
+  amount INTEGER NOT NULL,
+  date DATE NOT NULL DEFAULT CURRENT_DATE,
+  account_id UUID REFERENCES accounts(id),
+  notes TEXT,
+  transaction_id UUID REFERENCES transactions(id),
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Planned expenses

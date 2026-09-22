@@ -75,6 +75,7 @@ export interface Transaction {
   receipt_url?: string
   planned_expense_id?: string
   installment_payment_id?: string
+  budget_item_id?: string
   created_by: string
   created_at: string
   updated_at: string
@@ -123,6 +124,18 @@ export interface BudgetItem {
   spent_amount: number
   is_recurring: boolean
   category?: Category
+}
+
+export interface BudgetPayment {
+  id: string
+  budget_item_id: string
+  amount: number
+  date: string
+  account_id?: string
+  notes?: string
+  transaction_id?: string
+  created_at: string
+  account?: Account
 }
 
 export type PlannedExpenseStatus = 'planned' | 'partially_paid' | 'paid' | 'deferred' | 'cancelled'
