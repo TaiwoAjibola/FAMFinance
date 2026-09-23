@@ -78,6 +78,24 @@ export function IncomePage() {
     const amount = parseInt(form.amount) || 0
 
     if (editingIncome) {
+      const oldAccount = editingIncome.account_id
+
+      // Reverse old amount from old account
+      const { data: oldAcct } = await supabase
+        .from('accounts').select('balance').eq('id', oldAccount).single()
+      if (oldAcct) {
+        await supabase
+          .from('accounts').update({ balance: oldAcct.balance - editingIncome.amount }).eq('id', oldAccount)
+      }
+
+      // Apply new amount to new account
+      const { data: newAcct } = await supabase
+        .from('accounts').select('balance').eq('id', form.account_id).single()
+      if (newAcct) {
+        await supabase
+          .from('accounts').update({ balance: newAcct.balance + amount }).eq('id', form.account_id)
+      }
+
       await supabase
         .from('transactions')
         .update({
@@ -90,7 +108,7 @@ export function IncomePage() {
         })
         .eq('id', editingIncome.id)
     } else {
-      await supabase.from('transactions').insert({
+      const { error: insertErr } = await supabase.from('transactions').insert({
         household_id: household.id,
         account_id: form.account_id,
         category_id: form.category_id || null,
@@ -102,12 +120,19 @@ export function IncomePage() {
         created_by: user.id,
       })
 
-      // Update account balance
-      const account = accounts.find((a) => a.id === form.account_id)
-      if (account) {
+      if (insertErr) {
+        alert('Error saving income: ' + insertErr.message)
+        setSaving(false)
+        return
+      }
+
+      // Update account balance (read fresh from DB)
+      const { data: acct } = await supabase
+        .from('accounts').select('balance').eq('id', form.account_id).single()
+      if (acct) {
         await supabase
           .from('accounts')
-          .update({ balance: account.balance + amount })
+          .update({ balance: acct.balance + amount })
           .eq('id', form.account_id)
       }
     }
@@ -138,12 +163,13 @@ export function IncomePage() {
 
     await supabase.from('transactions').delete().eq('id', income.id)
 
-    // Reverse account balance
-    const account = accounts.find((a) => a.id === income.account_id)
-    if (account) {
+    // Reverse account balance (read fresh from DB)
+    const { data: acct } = await supabase
+      .from('accounts').select('balance').eq('id', income.account_id).single()
+    if (acct) {
       await supabase
         .from('accounts')
-        .update({ balance: account.balance - income.amount })
+        .update({ balance: acct.balance - income.amount })
         .eq('id', income.account_id)
     }
 

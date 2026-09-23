@@ -89,23 +89,23 @@ export function ExpensesPage() {
         })
         .eq('id', editingTx.id)
 
-      // Adjust account balances
-      const oldAccount = accounts.find((a) => a.id === oldAccountId)
-      const newAccount = accounts.find((a) => a.id === form.account_id)
-      if (oldAccount && newAccount) {
-        if (editingTx.type === 'expense') {
+      // Adjust account balances (read fresh from DB)
+      if (editingTx.type === 'expense') {
+        const { data: oldAcct } = await supabase
+          .from('accounts').select('balance').eq('id', oldAccountId).single()
+        if (oldAcct) {
           await supabase
-            .from('accounts')
-            .update({ balance: oldAccount.balance + oldAmount })
-            .eq('id', oldAccountId)
+            .from('accounts').update({ balance: oldAcct.balance + oldAmount }).eq('id', oldAccountId)
+        }
+        const { data: newAcct } = await supabase
+          .from('accounts').select('balance').eq('id', form.account_id).single()
+        if (newAcct) {
           await supabase
-            .from('accounts')
-            .update({ balance: newAccount.balance - amount })
-            .eq('id', form.account_id)
+            .from('accounts').update({ balance: newAcct.balance - amount }).eq('id', form.account_id)
         }
       }
     } else {
-      await supabase.from('transactions').insert({
+      const { error: insertErr } = await supabase.from('transactions').insert({
         household_id: household.id,
         account_id: form.account_id,
         category_id: form.category_id || null,
@@ -118,22 +118,26 @@ export function ExpensesPage() {
         created_by: user.id,
       })
 
-      // Update account balances
-      const fromAccount = accounts.find((a) => a.id === form.account_id)
-      if (fromAccount) {
+      if (insertErr) {
+        alert('Error saving transaction: ' + insertErr.message)
+        setSaving(false)
+        return
+      }
+
+      // Update account balances (read fresh from DB)
+      const { data: fromAcct } = await supabase
+        .from('accounts').select('balance').eq('id', form.account_id).single()
+      if (fromAcct) {
         await supabase
-          .from('accounts')
-          .update({ balance: fromAccount.balance - amount })
-          .eq('id', form.account_id)
+          .from('accounts').update({ balance: fromAcct.balance - amount }).eq('id', form.account_id)
       }
 
       if (form.type === 'transfer' && form.to_account_id) {
-        const toAccount = accounts.find((a) => a.id === form.to_account_id)
-        if (toAccount) {
+        const { data: toAcct } = await supabase
+          .from('accounts').select('balance').eq('id', form.to_account_id).single()
+        if (toAcct) {
           await supabase
-            .from('accounts')
-            .update({ balance: toAccount.balance + amount })
-            .eq('id', form.to_account_id)
+            .from('accounts').update({ balance: toAcct.balance + amount }).eq('id', form.to_account_id)
         }
       }
     }
@@ -165,21 +169,23 @@ export function ExpensesPage() {
 
     await supabase.from('transactions').delete().eq('id', tx.id)
 
-    // Reverse balance
-    const account = accounts.find((a) => a.id === tx.account_id)
-    if (account) {
+    // Reverse balance (read fresh from DB)
+    const { data: acct } = await supabase
+      .from('accounts').select('balance').eq('id', tx.account_id).single()
+    if (acct) {
       await supabase
         .from('accounts')
-        .update({ balance: account.balance + tx.amount })
+        .update({ balance: acct.balance + tx.amount })
         .eq('id', tx.account_id)
     }
 
     if (tx.type === 'transfer' && tx.to_account_id) {
-      const toAccount = accounts.find((a) => a.id === tx.to_account_id)
-      if (toAccount) {
+      const { data: toAcct } = await supabase
+        .from('accounts').select('balance').eq('id', tx.to_account_id).single()
+      if (toAcct) {
         await supabase
           .from('accounts')
-          .update({ balance: toAccount.balance - tx.amount })
+          .update({ balance: toAcct.balance - tx.amount })
           .eq('id', tx.to_account_id)
       }
     }

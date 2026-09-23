@@ -232,21 +232,8 @@ export function BudgetPage() {
     if (amount <= 0) return
     setPaying(true)
 
-    // Get current account balance
-    const { data: account } = await supabase
-      .from('accounts')
-      .select('balance')
-      .eq('id', payForm.account_id)
-      .single()
-
-    if (!account || account.balance < amount) {
-      alert('Insufficient balance in this account')
-      setPaying(false)
-      return
-    }
-
-    // 1. Create transaction
-    const { data: txn } = await supabase
+    // 1. Create transaction (expense)
+    const { data: txn, error: txnErr } = await supabase
       .from('transactions')
       .insert({
         household_id: household!.id,
@@ -257,19 +244,32 @@ export function BudgetPage() {
         description: getItemName(item) + ' (budget payment)',
         date: payForm.date,
         notes: payForm.notes || null,
-        budget_item_id: item.id,
         created_by: user.id,
       })
       .select()
       .single()
 
-    // 2. Deduct from account balance
-    await supabase
-      .from('accounts')
-      .update({ balance: account.balance - amount })
-      .eq('id', payForm.account_id)
+    if (txnErr) {
+      alert('Error creating transaction: ' + txnErr.message)
+      setPaying(false)
+      return
+    }
 
-    // 3. Create budget payment
+    // 2. Deduct from account balance (read fresh balance)
+    const { data: freshAccount } = await supabase
+      .from('accounts')
+      .select('balance')
+      .eq('id', payForm.account_id)
+      .single()
+
+    if (freshAccount) {
+      await supabase
+        .from('accounts')
+        .update({ balance: freshAccount.balance - amount })
+        .eq('id', payForm.account_id)
+    }
+
+    // 3. Create budget payment record
     await supabase.from('budget_payments').insert({
       budget_item_id: item.id,
       amount,

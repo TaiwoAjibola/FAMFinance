@@ -330,7 +330,7 @@ export function PlannedExpensesPage() {
           <div className="flex justify-center py-12">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-cta border-t-transparent" />
           </div>
-        ) : expenses.length === 0 ? (
+        ) : currentMonthExpenses.length === 0 ? (
           <div className="card py-12 text-center">
             <Target className="mx-auto h-10 w-10 text-text-light" />
             <p className="mt-3 text-sm text-text-muted">No planned expenses yet</p>
@@ -341,7 +341,7 @@ export function PlannedExpensesPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {expenses.map((expense) => (
+            {currentMonthExpenses.map((expense) => (
               <div key={expense.id} className="card-hover group">
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-3">
