@@ -220,7 +220,19 @@ export function BudgetPage() {
 
   const handleDeleteItem = async (itemId: string) => {
     if (!confirm('Remove this budget item and all its payments?')) return
-    await supabase.from('budget_items').delete().eq('id', itemId)
+
+    // Clear budget_item_id on any linked transactions first
+    await supabase
+      .from('transactions')
+      .update({ budget_item_id: null })
+      .eq('budget_item_id', itemId)
+
+    // Delete the budget item (cascades to budget_payments)
+    const { error } = await supabase.from('budget_items').delete().eq('id', itemId)
+    if (error) {
+      alert('Error deleting budget item: ' + error.message)
+      return
+    }
     await fetchData()
   }
 
@@ -290,6 +302,33 @@ export function BudgetPage() {
     setPayForm({ amount: '', date: new Date().toISOString().split('T')[0], account_id: '', notes: '' })
     await fetchData()
     setPaying(false)
+  }
+
+  const handleRevertPayment = async (payment: BudgetPayment, item: BudgetItem) => {
+    if (!confirm(`Revert this payment of ${formatCurrency(payment.amount)}? The money will be returned to the account.`)) return
+
+    // 1. Add money back to account
+    const { data: acct } = await supabase
+      .from('accounts').select('balance').eq('id', payment.account_id).single()
+    if (acct) {
+      await supabase
+        .from('accounts').update({ balance: acct.balance + payment.amount }).eq('id', payment.account_id)
+    }
+
+    // 2. Delete the linked transaction
+    if (payment.transaction_id) {
+      await supabase.from('transactions').delete().eq('id', payment.transaction_id)
+    }
+
+    // 3. Delete the budget payment record
+    await supabase.from('budget_payments').delete().eq('id', payment.id)
+
+    // 4. Update spent_amount on budget item
+    const newSpent = Math.max(0, (item.spent_amount || 0) - payment.amount)
+    await supabase
+      .from('budget_items').update({ spent_amount: newSpent }).eq('id', item.id)
+
+    await fetchData()
   }
 
   const getItemName = (item: BudgetItem) => {
@@ -556,6 +595,13 @@ export function BudgetPage() {
                                 <span className="text-text font-medium">{formatCurrency(p.amount)}</span>
                                 <span className="text-text-muted">{(p.account as any)?.name || '—'}</span>
                                 {p.notes && <span className="text-text-muted italic">{p.notes}</span>}
+                                <button
+                                  onClick={() => handleRevertPayment(p, item)}
+                                  className="rounded p-1 text-danger hover:bg-danger/5 cursor-pointer"
+                                  title="Revert this payment"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
                               </div>
                             ))}
                           </div>
