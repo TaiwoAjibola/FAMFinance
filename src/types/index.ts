@@ -77,6 +77,7 @@ export interface Transaction {
   planned_expense_id?: string
   installment_payment_id?: string
   budget_item_id?: string
+  status?: string
   created_by: string
   created_at: string
   updated_at: string

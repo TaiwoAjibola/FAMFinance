@@ -4,15 +4,13 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useHousehold } from '@/contexts/HouseholdContext'
 import { formatCurrency, getCurrentMonth } from '@/lib/utils'
 import { Layout } from '@/components/layout/Layout'
-import { Plus, ArrowDownCircle, Pencil, Trash2 } from 'lucide-react'
+import { Plus, ArrowDownCircle, Pencil, Trash2, Check, Clock, X } from 'lucide-react'
 import type { Account, Category, Transaction } from '@/types'
 
-type IncomeStatus = 'expected' | 'partially_received' | 'received' | 'cancelled'
+type IncomeStatus = 'expected' | 'received' | 'cancelled'
 
 interface IncomeRecord extends Transaction {
   status?: IncomeStatus
-  expected_amount?: number
-  received_amount?: number
 }
 
 export function IncomePage() {
@@ -31,9 +29,14 @@ export function IncomePage() {
     category_id: '',
     date: new Date().toISOString().split('T')[0],
     notes: '',
-    status: 'received' as IncomeStatus,
   })
   const [saving, setSaving] = useState(false)
+
+  // Mark-as-received state
+  const [receivingIncome, setReceivingIncome] = useState<IncomeRecord | null>(null)
+  const [receiveAccountId, setReceiveAccountId] = useState('')
+  const [receiving, setReceiving] = useState(false)
+
   const currentMonth = getCurrentMonth()
 
   useEffect(() => {
@@ -70,6 +73,7 @@ export function IncomePage() {
     setLoading(false)
   }
 
+  // Add expected income (no account update)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!household || !user) return
@@ -78,30 +82,12 @@ export function IncomePage() {
     const amount = parseInt(form.amount) || 0
 
     if (editingIncome) {
-      const oldAccount = editingIncome.account_id
-
-      // Reverse old amount from old account
-      const { data: oldAcct } = await supabase
-        .from('accounts').select('balance').eq('id', oldAccount).single()
-      if (oldAcct) {
-        await supabase
-          .from('accounts').update({ balance: oldAcct.balance - editingIncome.amount }).eq('id', oldAccount)
-      }
-
-      // Apply new amount to new account
-      const { data: newAcct } = await supabase
-        .from('accounts').select('balance').eq('id', form.account_id).single()
-      if (newAcct) {
-        await supabase
-          .from('accounts').update({ balance: newAcct.balance + amount }).eq('id', form.account_id)
-      }
-
       await supabase
         .from('transactions')
         .update({
           amount,
           description: form.description,
-          account_id: form.account_id,
+          account_id: form.account_id || null,
           category_id: form.category_id || null,
           date: form.date,
           notes: form.notes || null,
@@ -110,13 +96,14 @@ export function IncomePage() {
     } else {
       const { error: insertErr } = await supabase.from('transactions').insert({
         household_id: household.id,
-        account_id: form.account_id,
+        account_id: form.account_id || null,
         category_id: form.category_id || null,
         type: 'income',
         amount,
         description: form.description,
         date: form.date,
         notes: form.notes || null,
+        status: 'expected',
         created_by: user.id,
       })
 
@@ -125,23 +112,45 @@ export function IncomePage() {
         setSaving(false)
         return
       }
-
-      // Update account balance (read fresh from DB)
-      const { data: acct } = await supabase
-        .from('accounts').select('balance').eq('id', form.account_id).single()
-      if (acct) {
-        await supabase
-          .from('accounts')
-          .update({ balance: acct.balance + amount })
-          .eq('id', form.account_id)
-      }
     }
 
-    setForm({ amount: '', description: '', account_id: '', category_id: '', date: new Date().toISOString().split('T')[0], notes: '', status: 'received' })
+    setForm({ amount: '', description: '', account_id: '', category_id: '', date: new Date().toISOString().split('T')[0], notes: '' })
     setShowForm(false)
     setEditingIncome(null)
     await fetchData()
     setSaving(false)
+  }
+
+  // Mark as received — update account balance
+  const handleMarkReceived = async () => {
+    if (!receivingIncome || !receiveAccountId) return
+    setReceiving(true)
+
+    const { error } = await supabase
+      .from('transactions')
+      .update({ status: 'received', account_id: receiveAccountId })
+      .eq('id', receivingIncome.id)
+
+    if (error) {
+      alert('Error: ' + error.message)
+      setReceiving(false)
+      return
+    }
+
+    // Add money to account
+    const { data: acct } = await supabase
+      .from('accounts').select('balance').eq('id', receiveAccountId).single()
+    if (acct) {
+      await supabase
+        .from('accounts')
+        .update({ balance: acct.balance + receivingIncome.amount })
+        .eq('id', receiveAccountId)
+    }
+
+    setReceivingIncome(null)
+    setReceiveAccountId('')
+    setReceiving(false)
+    await fetchData()
   }
 
   const handleEdit = (income: IncomeRecord) => {
@@ -149,11 +158,10 @@ export function IncomePage() {
     setForm({
       amount: String(income.amount),
       description: income.description,
-      account_id: income.account_id,
+      account_id: income.account_id || '',
       category_id: income.category_id || '',
       date: income.date,
       notes: income.notes || '',
-      status: 'received',
     })
     setShowForm(true)
   }
@@ -163,22 +171,60 @@ export function IncomePage() {
 
     await supabase.from('transactions').delete().eq('id', income.id)
 
-    // Reverse account balance (read fresh from DB)
-    const { data: acct } = await supabase
-      .from('accounts').select('balance').eq('id', income.account_id).single()
-    if (acct) {
-      await supabase
-        .from('accounts')
-        .update({ balance: acct.balance - income.amount })
-        .eq('id', income.account_id)
+    // Only reverse balance if it was received into an account
+    if (income.status === 'received' && income.account_id) {
+      const { data: acct } = await supabase
+        .from('accounts').select('balance').eq('id', income.account_id).single()
+      if (acct) {
+        await supabase
+          .from('accounts')
+          .update({ balance: acct.balance - income.amount })
+          .eq('id', income.account_id)
+      }
     }
 
     await fetchData()
   }
 
-  const totalReceived = incomes
-    .filter((i) => i.date.startsWith(currentMonth))
+  const handleCancel = async (income: IncomeRecord) => {
+    if (!confirm('Cancel this expected income?')) return
+    await supabase
+      .from('transactions')
+      .update({ status: 'cancelled' })
+      .eq('id', income.id)
+    await fetchData()
+  }
+
+  const currentMonthIncomes = incomes.filter((i) => i.date.startsWith(currentMonth))
+  const totalReceived = currentMonthIncomes
+    .filter((i) => i.status === 'received')
     .reduce((sum, i) => sum + i.amount, 0)
+  const totalExpected = currentMonthIncomes
+    .filter((i) => i.status === 'expected')
+    .reduce((sum, i) => sum + i.amount, 0)
+
+  const getStatusBadge = (status?: IncomeStatus) => {
+    switch (status) {
+      case 'expected':
+        return (
+          <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium text-warning">
+            <Clock className="h-2.5 w-2.5" /> Expected
+          </span>
+        )
+      case 'cancelled':
+        return (
+          <span className="inline-flex items-center gap-1 rounded-full bg-danger/10 px-2 py-0.5 text-[10px] font-medium text-danger">
+            <X className="h-2.5 w-2.5" /> Cancelled
+          </span>
+        )
+      default:
+        return (
+          <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success">
+            <Check className="h-2.5 w-2.5" /> Received
+          </span>
+        )
+    }
+  }
 
   return (
     <Layout>
@@ -186,10 +232,10 @@ export function IncomePage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-text">Income</h1>
-            <p className="text-sm text-text-muted">Track all household income</p>
+            <p className="text-sm text-text-muted">Plan expected income and track what you've received</p>
           </div>
           <button
-            onClick={() => { setShowForm(true); setEditingIncome(null); setForm({ amount: '', description: '', account_id: '', category_id: '', date: new Date().toISOString().split('T')[0], notes: '', status: 'received' }) }}
+            onClick={() => { setShowForm(true); setEditingIncome(null); setForm({ amount: '', description: '', account_id: '', category_id: '', date: new Date().toISOString().split('T')[0], notes: '' }) }}
             className="btn-primary"
           >
             <Plus className="h-4 w-4" />
@@ -198,17 +244,24 @@ export function IncomePage() {
         </div>
 
         {/* Summary */}
-        <div className="stat-card">
-          <ArrowDownCircle className="h-5 w-5 text-success" />
-          <p className="stat-value text-success">{formatCurrency(totalReceived)}</p>
-          <p className="stat-label">Income received this month</p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="stat-card">
+            <ArrowDownCircle className="h-5 w-5 text-success" />
+            <p className="stat-value text-success">{formatCurrency(totalReceived)}</p>
+            <p className="stat-label">Received this month</p>
+          </div>
+          <div className="stat-card">
+            <Clock className="h-5 w-5 text-warning" />
+            <p className="stat-value text-warning">{formatCurrency(totalExpected)}</p>
+            <p className="stat-label">Expected this month</p>
+          </div>
         </div>
 
         {/* Form */}
         {showForm && (
           <div className="card border-accent/30">
             <h3 className="mb-4 text-lg font-semibold text-text">
-              {editingIncome ? 'Edit income' : 'Record income'}
+              {editingIncome ? 'Edit income' : 'Add expected income'}
             </h3>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -237,15 +290,14 @@ export function IncomePage() {
                   />
                 </div>
                 <div>
-                  <label htmlFor="account" className="label">Received into account</label>
+                  <label htmlFor="account" className="label">Account (select when received)</label>
                   <select
                     id="account"
                     value={form.account_id}
                     onChange={(e) => setForm({ ...form, account_id: e.target.value })}
                     className="input-field"
-                    required
                   >
-                    <option value="">Select account</option>
+                    <option value="">Skip for now — select when received</option>
                     {accounts.map((a) => (
                       <option key={a.id} value={a.id}>{a.name}</option>
                     ))}
@@ -290,13 +342,54 @@ export function IncomePage() {
               </div>
               <div className="flex gap-2">
                 <button type="submit" disabled={saving} className="btn-primary">
-                  {saving ? 'Saving...' : editingIncome ? 'Update income' : 'Record income'}
+                  {saving ? 'Saving...' : editingIncome ? 'Update' : 'Add expected income'}
                 </button>
                 <button type="button" onClick={() => { setShowForm(false); setEditingIncome(null) }} className="btn-secondary">
                   Cancel
                 </button>
               </div>
             </form>
+          </div>
+        )}
+
+        {/* Mark as received modal */}
+        {receivingIncome && (
+          <div className="card border-accent/30">
+            <h3 className="mb-2 text-lg font-semibold text-text">Mark as received</h3>
+            <p className="mb-4 text-sm text-text-muted">
+              <span className="font-medium text-text">{receivingIncome.description}</span> — {formatCurrency(receivingIncome.amount)}
+            </p>
+            <div className="flex items-end gap-4">
+              <div className="flex-1">
+                <label htmlFor="receive-account" className="label">Received into account</label>
+                <select
+                  id="receive-account"
+                  value={receiveAccountId}
+                  onChange={(e) => setReceiveAccountId(e.target.value)}
+                  className="input-field"
+                >
+                  <option value="">Select account</option>
+                  {accounts.map((a) => (
+                    <option key={a.id} value={a.id}>{a.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleMarkReceived}
+                  disabled={!receiveAccountId || receiving}
+                  className="btn-primary"
+                >
+                  {receiving ? 'Saving...' : 'Confirm'}
+                </button>
+                <button
+                  onClick={() => { setReceivingIncome(null); setReceiveAccountId('') }}
+                  className="btn-secondary"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -311,7 +404,7 @@ export function IncomePage() {
             <p className="mt-3 text-sm text-text-muted">No income recorded yet</p>
             <button onClick={() => setShowForm(true)} className="btn-primary mt-4">
               <Plus className="h-4 w-4" />
-              Record your first income
+              Add your first expected income
             </button>
           </div>
         ) : (
@@ -319,17 +412,49 @@ export function IncomePage() {
             {incomes.map((income) => (
               <div key={income.id} className="card-hover group flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-success/10">
-                    <ArrowDownCircle className="h-5 w-5 text-success" />
+                  <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+                    income.status === 'received' ? 'bg-success/10' :
+                    income.status === 'cancelled' ? 'bg-danger/10' : 'bg-warning/10'
+                  }`}>
+                    <ArrowDownCircle className={`h-5 w-5 ${
+                      income.status === 'received' ? 'text-success' :
+                      income.status === 'cancelled' ? 'text-danger' : 'text-warning'
+                    }`} />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-text">{income.description}</p>
-                    <p className="text-xs text-text-muted">{income.date}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-text">{income.description}</p>
+                      {getStatusBadge(income.status)}
+                    </div>
+                    <p className="text-xs text-text-muted">{income.date} {income.notes && `• ${income.notes}`}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-sm font-semibold text-success">{formatCurrency(income.amount)}</span>
+                  <span className={`text-sm font-semibold ${
+                    income.status === 'received' ? 'text-success' :
+                    income.status === 'cancelled' ? 'text-text-muted line-through' : 'text-text'
+                  }`}>
+                    {formatCurrency(income.amount)}
+                  </span>
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {income.status === 'expected' && (
+                      <>
+                        <button
+                          onClick={() => { setReceivingIncome(income); setReceiveAccountId(income.account_id || '') }}
+                          className="rounded-lg p-1.5 text-success hover:bg-success/5 cursor-pointer"
+                          title="Mark as received"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleCancel(income)}
+                          className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer"
+                          title="Cancel"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </>
+                    )}
                     <button onClick={() => handleEdit(income)} className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer">
                       <Pencil className="h-3.5 w-3.5" />
                     </button>

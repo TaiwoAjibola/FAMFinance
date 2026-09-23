@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   planned_expense_id UUID,
   installment_payment_id UUID,
   budget_item_id UUID REFERENCES budget_items(id),
+  status TEXT DEFAULT 'received',
   created_by UUID NOT NULL REFERENCES users(id),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()

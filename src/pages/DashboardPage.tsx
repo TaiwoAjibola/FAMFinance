@@ -59,6 +59,7 @@ export function DashboardPage() {
             .select('amount, type, category:categories(name)')
             .eq('household_id', household.id)
             .eq('type', 'income')
+            .eq('status', 'received')
             .gte('date', getMonthStart(currentMonth))
             .lt('date', getMonthEnd(currentMonth)),
           supabase
