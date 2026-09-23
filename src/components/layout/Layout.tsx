@@ -146,7 +146,33 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div className="border-t border-border p-3">
-          <div className="mb-2 rounded-lg bg-surface-alt p-3">
+          <div className="space-y-1">
+            <Link
+              to="/household"
+              onClick={() => setSidebarOpen(false)}
+              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-200 ${
+                location.pathname === '/household'
+                  ? 'bg-cta/10 text-cta'
+                  : 'text-text-muted hover:bg-surface-alt hover:text-text'
+              }`}
+            >
+              <Users className="h-4 w-4" />
+              Household
+            </Link>
+            <Link
+              to="/settings"
+              onClick={() => setSidebarOpen(false)}
+              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-200 ${
+                location.pathname === '/settings'
+                  ? 'bg-cta/10 text-cta'
+                  : 'text-text-muted hover:bg-surface-alt hover:text-text'
+              }`}
+            >
+              <Settings className="h-4 w-4" />
+              Settings
+            </Link>
+          </div>
+          <div className="mt-2 rounded-lg bg-surface-alt p-3">
             <p className="text-xs text-text-muted">Household</p>
             <p className="text-sm font-medium text-text">{household?.name || 'No household'}</p>
           </div>

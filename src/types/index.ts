@@ -32,6 +32,7 @@ export interface Invitation {
   invited_by: string
   created_at: string
   expires_at: string
+  token: string
 }
 
 export type AccountType = 'bank' | 'cash' | 'savings' | 'other'

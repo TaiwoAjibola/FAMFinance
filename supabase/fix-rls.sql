@@ -132,6 +132,8 @@ CREATE POLICY "Members can manage cash on hand" ON cash_on_hand FOR ALL USING (i
 -- Invitations
 DROP POLICY IF EXISTS "Members can manage invitations" ON invitations;
 CREATE POLICY "Members can manage invitations" ON invitations FOR ALL USING (is_household_member(household_id));
+DROP POLICY IF EXISTS "Public can view invitation by token" ON invitations;
+CREATE POLICY "Public can view invitation by token" ON invitations FOR SELECT USING (true);
 
 -- Audit logs
 DROP POLICY IF EXISTS "Members can manage audit logs" ON audit_logs;

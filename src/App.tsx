@@ -14,6 +14,7 @@ import { SavingsPage } from '@/pages/SavingsPage'
 import { HistoryPage } from '@/pages/HistoryPage'
 import { HouseholdPage } from '@/pages/HouseholdPage'
 import { SettingsPage } from '@/pages/SettingsPage'
+import { InvitePage } from '@/pages/InvitePage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading: authLoading } = useAuth()
@@ -75,6 +76,7 @@ function AppRoutes() {
       <Route path="/history" element={<ProtectedRoute><HistoryPage /></ProtectedRoute>} />
       <Route path="/household" element={<ProtectedRoute><HouseholdPage /></ProtectedRoute>} />
       <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+      <Route path="/invite/:token" element={<InvitePage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

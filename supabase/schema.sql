@@ -221,7 +221,8 @@ CREATE TABLE IF NOT EXISTS invitations (
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'expired')),
   invited_by UUID NOT NULL REFERENCES users(id),
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  expires_at TIMESTAMPTZ NOT NULL
+  expires_at TIMESTAMPTZ NOT NULL,
+  token TEXT UNIQUE NOT NULL DEFAULT encode(gen_random_bytes(16), 'hex')
 );
 
 -- Audit logs

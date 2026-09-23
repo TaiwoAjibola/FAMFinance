@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { useHousehold } from '@/contexts/HouseholdContext'
 import { Layout } from '@/components/layout/Layout'
-import { Users, Mail, UserPlus, Trash2, Shield } from 'lucide-react'
+import { Users, Mail, UserPlus, Trash2, Shield, Link, Copy, Check } from 'lucide-react'
 import type { Invitation } from '@/types'
 
 export function HouseholdPage() {
@@ -15,6 +15,7 @@ export function HouseholdPage() {
   const [inviteRole, setInviteRole] = useState<'member' | 'owner'>('member')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [copiedId, setCopiedId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!household) return
@@ -56,12 +57,15 @@ export function HouseholdPage() {
     const expiresAt = new Date()
     expiresAt.setDate(expiresAt.getDate() + 7)
 
+    const token = crypto.randomUUID().replace(/-/g, '').slice(0, 24)
+
     const { error: inviteError } = await supabase.from('invitations').insert({
       household_id: household.id,
       email: inviteEmail,
       role: inviteRole,
       invited_by: user.id,
       expires_at: expiresAt.toISOString(),
+      token,
     })
 
     if (inviteError) {
@@ -78,6 +82,13 @@ export function HouseholdPage() {
   const handleCancelInvite = async (id: string) => {
     await supabase.from('invitations').update({ status: 'expired' }).eq('id', id)
     await fetchInvitations()
+  }
+
+  const handleCopyLink = async (token: string, id: string) => {
+    const url = `${window.location.origin}/invite/${token}`
+    await navigator.clipboard.writeText(url)
+    setCopiedId(id)
+    setTimeout(() => setCopiedId(null), 2000)
   }
 
   const handleRemoveMember = async (memberId: string) => {
@@ -204,30 +215,50 @@ export function HouseholdPage() {
         {invitations.filter((i) => i.status === 'pending').length > 0 && (
           <div className="card">
             <h3 className="mb-4 text-lg font-semibold text-text">Pending Invitations</h3>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {invitations
                 .filter((i) => i.status === 'pending')
-                .map((invite) => (
-                  <div key={invite.id} className="flex items-center justify-between rounded-lg border border-border p-3">
-                    <div className="flex items-center gap-3">
-                      <Mail className="h-4 w-4 text-text-muted" />
-                      <div>
-                        <p className="text-sm font-medium text-text">{invite.email}</p>
-                        <p className="text-xs text-text-muted">
-                          Invited as {invite.role} • Expires {new Date(invite.expires_at).toLocaleDateString()}
-                        </p>
+                .map((invite) => {
+                  const inviteLink = `${window.location.origin}/invite/${invite.token}`
+                  return (
+                    <div key={invite.id} className="rounded-lg border border-border p-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Mail className="h-4 w-4 text-text-muted" />
+                          <div>
+                            <p className="text-sm font-medium text-text">{invite.email}</p>
+                            <p className="text-xs text-text-muted">
+                              Invited as {invite.role} • Expires {new Date(invite.expires_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                        {isOwner && (
+                          <button
+                            onClick={() => handleCancelInvite(invite.id)}
+                            className="btn-ghost text-xs text-danger"
+                          >
+                            Revoke
+                          </button>
+                        )}
+                      </div>
+                      <div className="mt-2 flex items-center gap-2 rounded-lg bg-surface-alt p-2">
+                        <Link className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+                        <p className="flex-1 truncate text-xs text-text-muted">{inviteLink}</p>
+                        <button
+                          onClick={() => handleCopyLink(invite.token, invite.id)}
+                          className="shrink-0 rounded-md p-1.5 text-text-muted hover:bg-surface hover:text-text cursor-pointer"
+                          title="Copy link"
+                        >
+                          {copiedId === invite.id ? (
+                            <Check className="h-3.5 w-3.5 text-success" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5" />
+                          )}
+                        </button>
                       </div>
                     </div>
-                    {isOwner && (
-                      <button
-                        onClick={() => handleCancelInvite(invite.id)}
-                        className="btn-ghost text-xs text-danger"
-                      >
-                        Cancel
-                      </button>
-                    )}
-                  </div>
-                ))}
+                  )
+                })}
             </div>
           </div>
         )}
