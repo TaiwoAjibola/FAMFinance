@@ -13,6 +13,7 @@ import {
   TrendingDown,
   Plus,
   ArrowRight,
+  HandCoins,
 } from 'lucide-react'
 
 interface DashboardData {
@@ -20,6 +21,7 @@ interface DashboardData {
   expectedIncome: number
   totalExpenses: number
   savingsContributed: number
+  totalDebts: number
   accountBalances: { name: string; balance: number; type: string }[]
   upcomingPlanned: { title: string; amount: number; due_date: string }[]
   recentTransactions: {
@@ -39,6 +41,7 @@ export function DashboardPage() {
     expectedIncome: 0,
     totalExpenses: 0,
     savingsContributed: 0,
+    totalDebts: 0,
     accountBalances: [],
     upcomingPlanned: [],
     recentTransactions: [],
@@ -52,7 +55,7 @@ export function DashboardPage() {
     const fetchDashboard = async () => {
       setLoading(true)
 
-      const [incomeRes, expenseRes, accountRes, plannedRes, transactionRes, savingsRes] =
+      const [incomeRes, expenseRes, accountRes, plannedRes, transactionRes, savingsRes, debtRes] =
         await Promise.all([
           supabase
             .from('transactions')
@@ -94,6 +97,11 @@ export function DashboardPage() {
             .eq('type', 'contribution')
             .gte('date', getMonthStart(currentMonth))
             .lt('date', getMonthEnd(currentMonth)),
+          supabase
+            .from('debts')
+            .select('amount, amount_repaid, status')
+            .eq('household_id', household.id)
+            .eq('status', 'active'),
         ])
 
       const income = (incomeRes.data || []).reduce((sum, t) => sum + t.amount, 0)
@@ -106,11 +114,15 @@ export function DashboardPage() {
         })
         .reduce((sum, c) => sum + c.amount, 0)
 
+      const totalDebts = (debtRes.data || [])
+        .reduce((sum, d) => sum + (d.amount - d.amount_repaid), 0)
+
       setData({
         totalIncome: income,
         expectedIncome: 0,
         totalExpenses: expenses,
         savingsContributed: savings,
+        totalDebts,
         accountBalances: (accountRes.data || []).map((a) => ({
           name: a.name,
           balance: a.balance,
@@ -169,7 +181,7 @@ export function DashboardPage() {
         </div>
 
         {/* Key metrics */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <div className="stat-card">
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-success/10">
@@ -198,6 +210,16 @@ export function DashboardPage() {
             </div>
             <p className="stat-value text-cta">{formatCurrency(data.savingsContributed)}</p>
             <p className="stat-label">Savings contributed</p>
+          </div>
+
+          <div className="stat-card">
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-danger/10">
+                <HandCoins className="h-4 w-4 text-danger" />
+              </div>
+            </div>
+            <p className="stat-value text-danger">{formatCurrency(data.totalDebts)}</p>
+            <p className="stat-label">Debts owed</p>
           </div>
 
           <div className="stat-card">

@@ -140,6 +140,21 @@ export interface BudgetPayment {
   account?: Account
 }
 
+export interface Debt {
+  id: string
+  household_id: string
+  lender_name: string
+  amount: number
+  amount_repaid: number
+  date_borrowed: string
+  due_date?: string
+  notes?: string
+  status: 'active' | 'fully_paid' | 'cancelled'
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
 export type PlannedExpenseStatus = 'planned' | 'partially_paid' | 'paid' | 'deferred' | 'cancelled'
 export type PlannedExpensePriority = 'low' | 'medium' | 'high' | 'critical'
 

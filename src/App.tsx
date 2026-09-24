@@ -15,6 +15,7 @@ import { HistoryPage } from '@/pages/HistoryPage'
 import { HouseholdPage } from '@/pages/HouseholdPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { InvitePage } from '@/pages/InvitePage'
+import { DebtsPage } from '@/pages/DebtsPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading: authLoading } = useAuth()
@@ -70,6 +71,7 @@ function AppRoutes() {
       <Route path="/accounts" element={<ProtectedRoute><AccountsPage /></ProtectedRoute>} />
       <Route path="/income" element={<ProtectedRoute><IncomePage /></ProtectedRoute>} />
       <Route path="/expenses" element={<ProtectedRoute><ExpensesPage /></ProtectedRoute>} />
+      <Route path="/debts" element={<ProtectedRoute><DebtsPage /></ProtectedRoute>} />
       <Route path="/budget" element={<ProtectedRoute><BudgetPage /></ProtectedRoute>} />
       <Route path="/planned" element={<ProtectedRoute><PlannedExpensesPage /></ProtectedRoute>} />
       <Route path="/savings" element={<ProtectedRoute><SavingsPage /></ProtectedRoute>} />

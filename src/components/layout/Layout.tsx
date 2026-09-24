@@ -17,6 +17,7 @@ import {
   X,
   ChevronDown,
   Users,
+  HandCoins,
 } from 'lucide-react'
 
 const navItems = [
@@ -24,6 +25,7 @@ const navItems = [
   { path: '/accounts', label: 'Accounts', icon: Wallet },
   { path: '/income', label: 'Income', icon: ArrowDownCircle },
   { path: '/expenses', label: 'Expenses', icon: ArrowUpCircle },
+  { path: '/debts', label: 'Debts', icon: HandCoins },
   { path: '/budget', label: 'Budget', icon: Calendar },
   { path: '/planned', label: 'Planned', icon: Target },
   { path: '/savings', label: 'Savings', icon: PiggyBank },
