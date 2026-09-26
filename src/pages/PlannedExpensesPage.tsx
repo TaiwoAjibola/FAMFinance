@@ -82,7 +82,7 @@ export function PlannedExpensesPage() {
         })
         .eq('id', editingExpense.id)
     } else {
-      const { data: planned } = await supabase
+      const { data: planned, error: insertErr } = await supabase
         .from('planned_expenses')
         .insert({
           household_id: household.id,
@@ -96,6 +96,12 @@ export function PlannedExpensesPage() {
         })
         .select()
         .single()
+
+      if (insertErr) {
+        alert('Error saving planned expense: ' + insertErr.message)
+        setSaving(false)
+        return
+      }
 
       if (planned && form.is_installment && form.num_installments) {
         const numInstallments = parseInt(form.num_installments) || 1
