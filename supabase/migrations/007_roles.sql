@@ -5,6 +5,8 @@ ALTER TABLE invitations DROP CONSTRAINT IF EXISTS invitations_role_check;
 -- Clean up data
 UPDATE household_members SET role = 'editor' WHERE role = 'member';
 UPDATE household_members SET role = 'editor' WHERE role IS NULL OR role NOT IN ('owner', 'editor', 'viewer');
+UPDATE invitations SET role = 'editor' WHERE role = 'member';
+UPDATE invitations SET role = 'editor' WHERE role IS NULL OR role NOT IN ('owner', 'editor', 'viewer');
 
 -- Re-add constraints (separate statements)
 ALTER TABLE household_members 
