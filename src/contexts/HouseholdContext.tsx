@@ -72,37 +72,59 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
 
     setLoading(true)
 
-    const { data: membership } = await supabase
-      .from('household_members')
-      .select('household_id, role')
-      .eq('user_id', user.id)
-      .single()
+    try {
+      const { data: membership, error: membershipError } = await supabase
+        .from('household_members')
+        .select('household_id, role')
+        .eq('user_id', user.id)
+        .single()
 
-    if (!membership) {
+      if (membershipError || !membership) {
+        console.warn('No household membership found:', membershipError)
+        setHousehold(null)
+        setMembers([])
+        setCurrentUserRole(null)
+        setLoading(false)
+        return
+      }
+
+      setCurrentUserRole(membership.role)
+
+      const { data: hh, error: hhError } = await supabase
+        .from('households')
+        .select('*')
+        .eq('id', membership.household_id)
+        .single()
+
+      if (hhError) {
+        console.error('Failed to fetch household:', hhError)
+        setHousehold(null)
+        setMembers([])
+        setCurrentUserRole(null)
+        setLoading(false)
+        return
+      }
+
+      setHousehold(hh)
+
+      const { data: mm, error: mmError } = await supabase
+        .from('household_members')
+        .select('*, user:users(*)')
+        .eq('household_id', membership.household_id)
+
+      if (mmError) {
+        console.error('Failed to fetch members:', mmError)
+      }
+
+      setMembers(mm || [])
+    } catch (err) {
+      console.error('fetchHousehold error:', err)
       setHousehold(null)
       setMembers([])
       setCurrentUserRole(null)
+    } finally {
       setLoading(false)
-      return
     }
-
-    setCurrentUserRole(membership.role)
-
-    const { data: hh } = await supabase
-      .from('households')
-      .select('*')
-      .eq('id', membership.household_id)
-      .single()
-
-    setHousehold(hh)
-
-    const { data: mm } = await supabase
-      .from('household_members')
-      .select('*, user:users(*)')
-      .eq('household_id', membership.household_id)
-
-    setMembers(mm || [])
-    setLoading(false)
   }
 
   useEffect(() => {
