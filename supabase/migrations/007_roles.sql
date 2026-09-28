@@ -1,3 +1,6 @@
+-- Migrate existing 'member' -> 'editor' BEFORE adding new constraint
+UPDATE household_members SET role = 'editor' WHERE role = 'member';
+
 -- Update role constraints to 3 roles
 ALTER TABLE household_members 
   DROP CONSTRAINT IF EXISTS household_members_role_check,
@@ -8,9 +11,6 @@ ALTER TABLE invitations
   DROP CONSTRAINT IF EXISTS invitations_role_check,
   ADD CONSTRAINT invitations_role_check 
   CHECK (role IN ('owner', 'editor', 'viewer'));
-
--- Migrate existing 'member' -> 'editor'
-UPDATE household_members SET role = 'editor' WHERE role = 'member';
 
 -- RLS: viewers = SELECT only
 DROP POLICY IF EXISTS "Members can manage transactions" ON transactions;
