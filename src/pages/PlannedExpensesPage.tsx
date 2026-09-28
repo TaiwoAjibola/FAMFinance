@@ -175,6 +175,98 @@ export function PlannedExpensesPage() {
   const totalPlanned = currentMonthExpenses.reduce((sum, e) => sum + e.amount, 0)
   const totalPaid = currentMonthExpenses.filter((e) => e.status === 'paid').reduce((sum, e) => sum + e.amount, 0)
 
+  // Group all expenses by target_month for display
+  const groupedByMonth = expenses.reduce((acc, expense) => {
+    const month = expense.target_month
+    if (!acc[month]) acc[month] = []
+    acc[month].push(expense)
+    return acc
+  }, {} as Record<string, typeof expenses>)
+
+  // Sort months chronologically
+  const sortedMonths = Object.keys(groupedByMonth).sort()
+
+  // Render expense list
+  const expenseList = loading ? (
+    <div className="flex justify-center py-12">
+      <div className="h-8 w-8 animate-spin rounded-full border-4 border-cta border-t-transparent" />
+    </div>
+  ) : expenses.length === 0 ? (
+    <div className="card py-12 text-center">
+      <Target className="mx-auto h-10 w-10 text-text-light" />
+      <p className="mt-3 text-sm text-text-muted">No planned expenses yet</p>
+      <button onClick={() => setShowForm(true)} className="btn-primary mt-4">
+        <Plus className="h-4 w-4" />
+        Add your first planned expense
+      </button>
+    </div>
+  ) : (
+    <div className="space-y-6">
+      {sortedMonths.map((month) => (
+        <div key={month}>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold text-text-muted uppercase tracking-wide">
+              {new Date(month + '-01').toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}
+            </h3>
+            {month === currentMonth && (
+              <span className="text-xs font-medium bg-cta/10 text-cta px-2 py-0.5 rounded">Current month</span>
+            )}
+          </div>
+          <div className="space-y-2">
+            {groupedByMonth[month].map((expense) => (
+              <div key={expense.id} className="card-hover group">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start gap-3">
+                    {STATUS_ICONS[expense.status]}
+                    <div>
+                      <p className="text-sm font-medium text-text">{expense.title}</p>
+                      <p className="text-xs text-text-muted">
+                        {expense.due_date && `Due ${expense.due_date}`}
+                      </p>
+                      {expense.notes && (
+                        <p className="mt-1 text-xs text-text-light">{expense.notes}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-sm font-semibold ${expense.status === 'paid' ? 'text-success' : 'text-text'}`}>
+                      {formatCurrency(expense.amount)}
+                    </span>
+                    <span className={PRIORITY_COLORS[expense.priority]}>
+                      {expense.priority}
+                    </span>
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {expense.status !== 'paid' && (
+                        <button onClick={() => handleMarkPaid(expense)} className="rounded-lg p-1.5 text-success hover:bg-success/5 cursor-pointer" title="Mark as paid">
+                          <CheckCircle className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      <button onClick={() => handleEdit(expense)} className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer">
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button onClick={() => handleDelete(expense.id)} className="rounded-lg p-1.5 text-danger hover:bg-danger/5 cursor-pointer">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Installment info */}
+                {expense.installment_plan && (
+                  <div className="mt-3 rounded-lg bg-surface-alt p-3">
+                    <p className="text-xs text-text-muted">
+                      Installment plan: {expense.installment_plan.num_installments} payments of {formatCurrency(expense.installment_plan.installment_amount)}
+                    </p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+
   return (
     <Layout>
       <div className="space-y-6">
@@ -331,72 +423,8 @@ export function PlannedExpensesPage() {
           </div>
         )}
 
-        {/* Expenses list */}
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-cta border-t-transparent" />
-          </div>
-        ) : currentMonthExpenses.length === 0 ? (
-          <div className="card py-12 text-center">
-            <Target className="mx-auto h-10 w-10 text-text-light" />
-            <p className="mt-3 text-sm text-text-muted">No planned expenses yet</p>
-            <button onClick={() => setShowForm(true)} className="btn-primary mt-4">
-              <Plus className="h-4 w-4" />
-              Add your first planned expense
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {currentMonthExpenses.map((expense) => (
-              <div key={expense.id} className="card-hover group">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-3">
-                    {STATUS_ICONS[expense.status]}
-                    <div>
-                      <p className="text-sm font-medium text-text">{expense.title}</p>
-                      <p className="text-xs text-text-muted">
-                        {expense.target_month} {expense.due_date && `• Due ${expense.due_date}`}
-                      </p>
-                      {expense.notes && (
-                        <p className="mt-1 text-xs text-text-light">{expense.notes}</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-sm font-semibold ${expense.status === 'paid' ? 'text-success' : 'text-text'}`}>
-                      {formatCurrency(expense.amount)}
-                    </span>
-                    <span className={PRIORITY_COLORS[expense.priority]}>
-                      {expense.priority}
-                    </span>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {expense.status !== 'paid' && (
-                        <button onClick={() => handleMarkPaid(expense)} className="rounded-lg p-1.5 text-success hover:bg-success/5 cursor-pointer" title="Mark as paid">
-                          <CheckCircle className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                      <button onClick={() => handleEdit(expense)} className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer">
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button onClick={() => handleDelete(expense.id)} className="rounded-lg p-1.5 text-danger hover:bg-danger/5 cursor-pointer">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Installment info */}
-                {expense.installment_plan && (
-                  <div className="mt-3 rounded-lg bg-surface-alt p-3">
-                    <p className="text-xs text-text-muted">
-                      Installment plan: {expense.installment_plan.num_installments} payments of {formatCurrency(expense.installment_plan.installment_amount)}
-                    </p>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+{/* Expenses list */}
+        {expenseList}
       </div>
     </Layout>
   )
