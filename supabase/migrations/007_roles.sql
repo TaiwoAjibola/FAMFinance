@@ -1,5 +1,6 @@
--- Migrate existing 'member' -> 'editor' BEFORE adding new constraint
+-- First, see what roles exist and clean up
 UPDATE household_members SET role = 'editor' WHERE role = 'member';
+UPDATE household_members SET role = 'editor' WHERE role IS NULL OR role NOT IN ('owner', 'editor', 'viewer');
 
 -- Update role constraints to 3 roles
 ALTER TABLE household_members 
