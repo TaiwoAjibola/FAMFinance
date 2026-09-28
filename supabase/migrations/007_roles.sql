@@ -1,15 +1,17 @@
--- First, see what roles exist and clean up
+-- Drop constraints first (separate statements to ensure they're fully dropped)
+ALTER TABLE household_members DROP CONSTRAINT IF EXISTS household_members_role_check;
+ALTER TABLE invitations DROP CONSTRAINT IF EXISTS invitations_role_check;
+
+-- Clean up data
 UPDATE household_members SET role = 'editor' WHERE role = 'member';
 UPDATE household_members SET role = 'editor' WHERE role IS NULL OR role NOT IN ('owner', 'editor', 'viewer');
 
--- Update role constraints to 3 roles
+-- Re-add constraints (separate statements)
 ALTER TABLE household_members 
-  DROP CONSTRAINT IF EXISTS household_members_role_check,
   ADD CONSTRAINT household_members_role_check 
   CHECK (role IN ('owner', 'editor', 'viewer'));
 
 ALTER TABLE invitations 
-  DROP CONSTRAINT IF EXISTS invitations_role_check,
   ADD CONSTRAINT invitations_role_check 
   CHECK (role IN ('owner', 'editor', 'viewer'));
 
