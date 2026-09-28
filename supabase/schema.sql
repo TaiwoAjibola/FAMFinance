@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS household_members (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   household_id UUID NOT NULL REFERENCES households(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('owner', 'member')),
+  role TEXT NOT NULL DEFAULT 'editor' CHECK (role IN ('owner', 'editor', 'viewer')),
   joined_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(household_id, user_id)
 );
@@ -234,7 +234,7 @@ CREATE TABLE IF NOT EXISTS invitations (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   household_id UUID NOT NULL REFERENCES households(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
-  role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('owner', 'member')),
+  role TEXT NOT NULL DEFAULT 'editor' CHECK (role IN ('owner', 'editor', 'viewer')),
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'expired')),
   invited_by UUID NOT NULL REFERENCES users(id),
   created_at TIMESTAMPTZ DEFAULT NOW(),

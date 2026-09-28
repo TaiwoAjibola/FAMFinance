@@ -3,16 +3,18 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { useHousehold } from '@/contexts/HouseholdContext'
 import { Layout } from '@/components/layout/Layout'
-import { Users, Mail, UserPlus, Trash2, Shield, Link, Copy, Check } from 'lucide-react'
-import type { Invitation } from '@/types'
+import { Users, Mail, UserPlus, Trash2, Shield, Link, Copy, Check, RefreshCw, Eye, Edit3 } from 'lucide-react'
+import type { Invitation, MemberRole, HouseholdMember } from '@/types'
+import { usePermissions } from '@/hooks/usePermissions'
 
 export function HouseholdPage() {
   const { user } = useAuth()
   const { household, members, refreshHousehold } = useHousehold()
+  const { can } = usePermissions()
   const [invitations, setInvitations] = useState<Invitation[]>([])
   const [showInviteForm, setShowInviteForm] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteRole, setInviteRole] = useState<'member' | 'owner'>('member')
+  const [inviteRole, setInviteRole] = useState<MemberRole>('editor')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -38,7 +40,6 @@ export function HouseholdPage() {
     setError('')
     setSaving(true)
 
-    // Check if already a member
     const existingMember = members.find((m) => m.user?.email === inviteEmail)
     if (existingMember) {
       setError('This person is already a member of this household')
@@ -46,7 +47,6 @@ export function HouseholdPage() {
       return
     }
 
-    // Check if already invited
     const existingInvite = invitations.find((i) => i.email === inviteEmail && i.status === 'pending')
     if (existingInvite) {
       setError('An invitation is already pending for this email')
@@ -55,7 +55,7 @@ export function HouseholdPage() {
     }
 
     const expiresAt = new Date()
-    expiresAt.setDate(expiresAt.getDate() + 7)
+    expiresAt.setDate(expiresAt.getDate() + 5)
 
     const token = crypto.randomUUID().replace(/-/g, '').slice(0, 24)
 
@@ -91,10 +91,78 @@ export function HouseholdPage() {
     setTimeout(() => setCopiedId(null), 2000)
   }
 
+  const handleShareWhatsApp = async (token: string) => {
+    const url = `${window.location.origin}/invite/${token}`
+    const text = `Join our family finance tracker! ${url}`
+    
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'Family Finance Invite', text, url })
+        return
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') {
+          // User cancelled or error, fall through to clipboard
+        }
+      }
+    }
+    
+    // Fallback: copy to clipboard
+    await navigator.clipboard.writeText(url)
+    alert('Link copied! Open WhatsApp and paste to share.')
+  }
+
   const handleRemoveMember = async (memberId: string) => {
-    if (!confirm('Are you sure you want to remove this member?')) return
+    if (!confirm('Remove this member? They will lose access to this household.')) return
     await supabase.from('household_members').delete().eq('id', memberId)
     await refreshHousehold()
+  }
+
+  const handleReinvite = async (member: HouseholdMember) => {
+    if (!member.user?.email) return
+    const email = member.user.email
+    if (!confirm(`Remove ${member.user.full_name || email} and send a fresh invite? They'll need to set a new password.`)) return
+
+    // Delete the member
+    await supabase.from('household_members').delete().eq('id', member.id)
+    
+    // Create new invite
+    const expiresAt = new Date()
+    expiresAt.setDate(expiresAt.getDate() + 5)
+    const token = crypto.randomUUID().replace(/-/g, '').slice(0, 24)
+
+    await supabase.from('invitations').insert({
+      household_id: household!.id,
+      email,
+      role: 'editor',
+      invited_by: user!.id,
+      expires_at: expiresAt.toISOString(),
+      token,
+    })
+
+    await refreshHousehold()
+    await fetchInvitations()
+  }
+
+  const handleRoleChange = async (memberId: string, newRole: MemberRole) => {
+    if (!can('manage_roles')) return
+    await supabase.from('household_members').update({ role: newRole }).eq('id', memberId)
+    await refreshHousehold()
+  }
+
+  const ROLE_OPTIONS: { value: MemberRole; label: string; description: string }[] = [
+    { value: 'editor', label: 'Editor', description: 'Can add/edit budgets, expenses, income, debts, savings' },
+    { value: 'viewer', label: 'Viewer', description: 'Read-only access to all household finances' },
+  ]
+
+  const getRoleBadge = (role: MemberRole) => {
+    switch (role) {
+      case 'owner':
+        return <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent"><Shield className="h-3 w-3" /> Owner</span>
+      case 'editor':
+        return <span className="inline-flex items-center gap-1 rounded-full bg-cta/10 px-2.5 py-0.5 text-xs font-medium text-cta"><Edit3 className="h-3 w-3" /> Editor</span>
+      case 'viewer':
+        return <span className="inline-flex items-center gap-1 rounded-full bg-surface-alt px-2.5 py-0.5 text-xs font-medium text-text-muted"><Eye className="h-3 w-3" /> Viewer</span>
+    }
   }
 
   const isOwner = members.find((m) => m.user_id === user?.id)?.role === 'owner'
@@ -147,19 +215,36 @@ export function HouseholdPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                    member.role === 'owner' ? 'bg-accent/10 text-accent' : 'bg-surface-alt text-text-muted'
-                  }`}>
-                    <Shield className="h-3 w-3" />
-                    {member.role}
-                  </span>
+                  {getRoleBadge(member.role)}
                   {isOwner && member.user_id !== user?.id && (
-                    <button
-                      onClick={() => handleRemoveMember(member.id)}
-                      className="rounded-lg p-1.5 text-danger hover:bg-danger/5 cursor-pointer"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    <>
+                      <select
+                        value={member.role}
+                        onChange={(e) => handleRoleChange(member.id, e.target.value as MemberRole)}
+                        className="text-xs bg-transparent border-none focus:outline-none text-text cursor-pointer"
+                        disabled={!can('manage_roles')}
+                      >
+                        {ROLE_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => handleReinvite(member)}
+                        className="rounded-lg p-1.5 text-cta hover:bg-cta/5 cursor-pointer"
+                        title="Re-invite (fresh password)"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleRemoveMember(member.id)}
+                        className="rounded-lg p-1.5 text-danger hover:bg-danger/5 cursor-pointer"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </>
+                  )}
+                  {member.user_id === user?.id && (
+                    <span className="text-xs text-text-muted">(You)</span>
                   )}
                 </div>
               </div>
@@ -187,18 +272,22 @@ export function HouseholdPage() {
                   required
                 />
               </div>
-              <div>
-                <label htmlFor="role" className="label">Role</label>
-                <select
-                  id="role"
-                  value={inviteRole}
-                  onChange={(e) => setInviteRole(e.target.value as 'member' | 'owner')}
-                  className="input-field"
-                >
-                  <option value="member">Member</option>
-                  <option value="owner">Owner</option>
-                </select>
-              </div>
+<div>
+                  <label htmlFor="role" className="label">Role</label>
+                  <select
+                    id="role"
+                    value={inviteRole}
+                    onChange={(e) => setInviteRole(e.target.value as MemberRole)}
+                    className="input-field"
+                  >
+                    {ROLE_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-text-muted">
+                    {inviteRole === 'editor' ? 'Can add/edit all household finances' : 'Read-only access to all finances'}
+                  </p>
+                </div>
               <div className="flex gap-2">
                 <button type="submit" disabled={saving} className="btn-primary">
                   {saving ? 'Sending...' : 'Send invitation'}
@@ -244,17 +333,33 @@ export function HouseholdPage() {
                       <div className="mt-2 flex items-center gap-2 rounded-lg bg-surface-alt p-2">
                         <Link className="h-3.5 w-3.5 shrink-0 text-text-muted" />
                         <p className="flex-1 truncate text-xs text-text-muted">{inviteLink}</p>
-                        <button
-                          onClick={() => handleCopyLink(invite.token, invite.id)}
-                          className="shrink-0 rounded-md p-1.5 text-text-muted hover:bg-surface hover:text-text cursor-pointer"
-                          title="Copy link"
-                        >
-                          {copiedId === invite.id ? (
-                            <Check className="h-3.5 w-3.5 text-success" />
-                          ) : (
-                            <Copy className="h-3.5 w-3.5" />
-                          )}
-                        </button>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => handleCopyLink(invite.token, invite.id)}
+                            className="shrink-0 rounded-md p-1.5 text-text-muted hover:bg-surface hover:text-text cursor-pointer"
+                            title="Copy link"
+                          >
+                            {copiedId === invite.id ? (
+                              <Check className="h-3.5 w-3.5 text-success" />
+                            ) : (
+                              <Copy className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => handleShareWhatsApp(invite.token)}
+                            className="shrink-0 rounded-md p-1.5 text-cta hover:bg-cta/5 cursor-pointer"
+                            title="Share via WhatsApp"
+                          >
+                            <Link className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(`Join our family finance tracker! ${window.location.origin}/invite/${invite.token}`)}`, '_blank')}
+                            className="shrink-0 rounded-md p-1.5 text-success hover:bg-success/5 cursor-pointer"
+                            title="Open WhatsApp Web"
+                          >
+                            <Link className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )

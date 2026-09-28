@@ -58,10 +58,16 @@ CREATE POLICY "Authenticated can insert membership" ON household_members FOR INS
   WITH CHECK (auth.uid() IS NOT NULL);
 DROP POLICY IF EXISTS "Owner can update members" ON household_members;
 CREATE POLICY "Owner can update members" ON household_members FOR UPDATE
-  USING (household_id IN (SELECT id FROM households WHERE owner_id = auth.uid()));
+  USING (household_id IN (
+    SELECT household_id FROM household_members 
+    WHERE user_id = auth.uid() AND role = 'owner'
+  ));
 DROP POLICY IF EXISTS "Owner can delete members" ON household_members;
 CREATE POLICY "Owner can delete members" ON household_members FOR DELETE
-  USING (household_id IN (SELECT id FROM households WHERE owner_id = auth.uid()));
+  USING (household_id IN (
+    SELECT household_id FROM household_members 
+    WHERE user_id = auth.uid() AND role = 'owner'
+  ));
 
 -- Accounts
 DROP POLICY IF EXISTS "Members can view accounts" ON accounts;
@@ -131,7 +137,16 @@ CREATE POLICY "Members can manage cash on hand" ON cash_on_hand FOR ALL USING (i
 
 -- Invitations
 DROP POLICY IF EXISTS "Members can manage invitations" ON invitations;
-CREATE POLICY "Members can manage invitations" ON invitations FOR ALL USING (is_household_member(household_id));
+CREATE POLICY "Owners can manage invitations" ON invitations FOR ALL
+  USING (household_id IN (
+    SELECT household_id FROM household_members 
+    WHERE user_id = auth.uid() AND role = 'owner'
+  ));
+CREATE POLICY "Editors and viewers can view invitations" ON invitations FOR SELECT
+  USING (household_id IN (
+    SELECT household_id FROM household_members 
+    WHERE user_id = auth.uid() AND role IN ('editor', 'viewer')
+  ));
 DROP POLICY IF EXISTS "Public can view invitation by token" ON invitations;
 CREATE POLICY "Public can view invitation by token" ON invitations FOR SELECT USING (true);
 

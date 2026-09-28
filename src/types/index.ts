@@ -14,11 +14,13 @@ export interface Household {
   created_at: string
 }
 
+export type MemberRole = 'owner' | 'editor' | 'viewer'
+
 export interface HouseholdMember {
   id: string
   household_id: string
   user_id: string
-  role: 'owner' | 'member'
+  role: MemberRole
   joined_at: string
   user?: User
 }
@@ -27,7 +29,7 @@ export interface Invitation {
   id: string
   household_id: string
   email: string
-  role: 'owner' | 'member'
+  role: MemberRole
   status: 'pending' | 'accepted' | 'expired'
   invited_by: string
   created_at: string

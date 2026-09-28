@@ -3,16 +3,17 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { Layout } from '@/components/layout/Layout'
-import { Users, Mail, Shield, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
+import { Users, Mail, Shield, CheckCircle, AlertCircle, Loader2, Share2 } from 'lucide-react'
 
 interface InviteDetails {
   id: string
   household_id: string
   email: string
-  role: 'owner' | 'member'
+  role: 'owner' | 'editor' | 'viewer' | 'member'
   status: string
   expires_at: string
   household_name?: string
+  invited_by_name?: string
 }
 
 export function InvitePage() {
@@ -36,7 +37,7 @@ export function InvitePage() {
 
     const { data, error: fetchErr } = await supabase
       .from('invitations')
-      .select('*, households(name)')
+      .select('*, households(name), invited_by_user:users!invited_by(full_name)')
       .eq('token', token)
       .single()
 
@@ -66,6 +67,7 @@ export function InvitePage() {
       status: data.status,
       expires_at: data.expires_at,
       household_name: (data.households as unknown as { name: string })?.name,
+      invited_by_name: (data.invited_by_user as unknown as { full_name: string })?.full_name,
     })
     setLoading(false)
   }
@@ -109,6 +111,26 @@ export function InvitePage() {
       navigate('/')
       window.location.reload()
     }, 1500)
+  }
+
+  const handleShare = async () => {
+    if (!invite) return
+    const url = window.location.href
+    const text = `${invite.invited_by_name || 'Someone'} invited you to join ${invite.household_name || 'Family Finance'} as ${invite.role}. Join here: ${url}`
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'Family Finance Invite', text, url })
+        return
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') {
+          // fall through
+        }
+      }
+    }
+    
+    await navigator.clipboard.writeText(url)
+    alert('Link copied! Share it via WhatsApp or any app.')
   }
 
   if (loading) {
@@ -162,7 +184,8 @@ export function InvitePage() {
             </div>
             <h2 className="mt-4 text-xl font-bold text-text">You're invited!</h2>
             <p className="mt-2 text-sm text-text-muted">
-              Join <span className="font-medium text-text">{invite?.household_name || 'a household'}</span> on FamFinance
+              <span className="font-medium text-text">{invite?.invited_by_name || 'Someone'}</span> invited you to join{' '}
+              <span className="font-medium text-text">{invite?.household_name || 'a household'}</span> on FamFinance
             </p>
           </div>
 
@@ -179,6 +202,15 @@ export function InvitePage() {
               <div>
                 <p className="text-xs text-text-muted">Role</p>
                 <p className="text-sm font-medium text-text capitalize">{invite?.role}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Share2 className="h-4 w-4 text-text-muted" />
+              <div>
+                <p className="text-xs text-text-muted">Share this invite</p>
+                <button onClick={handleShare} className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-cta hover:text-cta-light cursor-pointer">
+                  <Share2 className="h-3 w-3" /> Share via WhatsApp / Apps
+                </button>
               </div>
             </div>
           </div>
