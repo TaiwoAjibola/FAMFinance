@@ -222,13 +222,13 @@ export function InvitePage() {
           <div className="mt-6 space-y-3">
             {!user ? (
               <>
-                <Link to="/login" className="btn-primary w-full justify-center">
-                  Sign in to accept
+                <Link to={`/signup?invite=${token}`} className="btn-primary w-full justify-center">
+                  Create account & join
                 </Link>
                 <p className="text-center text-xs text-text-muted">
-                  Don't have an account?{' '}
-                  <Link to="/signup" className="font-medium text-cta hover:text-cta-light">
-                    Sign up
+                  Already have an account?{' '}
+                  <Link to={`/login?invite=${token}`} className="font-medium text-cta hover:text-cta-light">
+                    Sign in to accept
                   </Link>
                 </p>
               </>

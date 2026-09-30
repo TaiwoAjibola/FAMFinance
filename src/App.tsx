@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from 'react-router-dom'
 import React, { Suspense, lazy } from 'react'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { HouseholdProvider, useHousehold } from '@/contexts/HouseholdContext'
@@ -64,6 +64,8 @@ function LoadingSpinner() {
 
 function AppRoutes() {
   const { user, loading: authLoading } = useAuth()
+  const [searchParams] = useSearchParams()
+  const inviteToken = searchParams.get('invite')
 
   if (authLoading) {
     return <LoadingSpinner />
@@ -72,8 +74,8 @@ function AppRoutes() {
   return (
     <Suspense fallback={<LoadingSpinner />}>
       <Routes>
-        <Route path="/login" element={user ? <Navigate to="/" replace /> : <LoginPage />} />
-        <Route path="/signup" element={user ? <Navigate to="/" replace /> : <SignUpPage />} />
+        <Route path="/login" element={user && !inviteToken ? <Navigate to="/" replace /> : <LoginPage />} />
+        <Route path="/signup" element={user && !inviteToken ? <Navigate to="/" replace /> : <SignUpPage />} />
         <Route path="/setup" element={<SetupPage />} />
         <Route path="/" element={<ProtectedRoute><DashboardPageLazy /></ProtectedRoute>} />
         <Route path="/accounts" element={<ProtectedRoute><AccountsPageLazy /></ProtectedRoute>} />

@@ -4,8 +4,8 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useHousehold } from '@/contexts/HouseholdContext'
 import { formatCurrency, getCurrentMonth } from '@/lib/utils'
 import { Layout } from '@/components/layout/Layout'
-import { Plus, Target, Clock, CheckCircle, AlertCircle, Pencil, Trash2 } from 'lucide-react'
-import type { PlannedExpense, InstallmentPlan } from '@/types'
+import { Plus, Target, Clock, CheckCircle, AlertCircle, Pencil, Trash2, Wallet } from 'lucide-react'
+import type { PlannedExpense, InstallmentPlan, Account } from '@/types'
 
 const PRIORITY_COLORS: Record<string, string> = {
   low: 'badge-neutral',
@@ -42,10 +42,27 @@ export function PlannedExpensesPage() {
   const [saving, setSaving] = useState(false)
   const currentMonth = getCurrentMonth()
 
+  // Pay state
+  const [accounts, setAccounts] = useState<Account[]>([])
+  const [payingExpense, setPayingExpense] = useState<PlannedExpense | null>(null)
+  const [payForm, setPayForm] = useState({ amount: '', account_id: '', date: new Date().toISOString().split('T')[0] })
+  const [paying, setPaying] = useState(false)
+
   useEffect(() => {
     if (!household) return
     fetchExpenses()
+    fetchAccounts()
   }, [household])
+
+  const fetchAccounts = async () => {
+    if (!household) return
+    const { data } = await supabase
+      .from('accounts')
+      .select('*')
+      .eq('household_id', household.id)
+      .eq('is_active', true)
+    setAccounts(data || [])
+  }
 
   const fetchExpenses = async () => {
     if (!household) return
@@ -163,11 +180,52 @@ export function PlannedExpensesPage() {
     await fetchExpenses()
   }
 
-  const handleMarkPaid = async (expense: PlannedExpense) => {
+  const handlePay = async () => {
+    if (!payingExpense || !user || !household) return
+    const amount = parseInt(payForm.amount) || 0
+    if (amount <= 0 || !payForm.account_id) return
+    setPaying(true)
+
+    // 1. Create expense transaction
+    const { error: txnErr } = await supabase
+      .from('transactions')
+      .insert({
+        household_id: household.id,
+        account_id: payForm.account_id,
+        category_id: payingExpense.category_id || null,
+        type: 'expense',
+        amount,
+        description: payingExpense.title + ' (planned expense)',
+        date: payForm.date,
+        created_by: user.id,
+      })
+
+    if (txnErr) {
+      alert('Error creating transaction: ' + txnErr.message)
+      setPaying(false)
+      return
+    }
+
+    // 2. Deduct from account (read fresh balance)
+    const { data: acct } = await supabase
+      .from('accounts').select('balance').eq('id', payForm.account_id).single()
+    if (acct) {
+      await supabase
+        .from('accounts')
+        .update({ balance: acct.balance - amount })
+        .eq('id', payForm.account_id)
+    }
+
+    // 3. Update planned expense status
+    const newStatus = amount >= payingExpense.amount ? 'paid' : 'partially_paid'
     await supabase
       .from('planned_expenses')
-      .update({ status: 'paid' })
-      .eq('id', expense.id)
+      .update({ status: newStatus })
+      .eq('id', payingExpense.id)
+
+    setPayingExpense(null)
+    setPayForm({ amount: '', account_id: '', date: new Date().toISOString().split('T')[0] })
+    setPaying(false)
     await fetchExpenses()
   }
 
@@ -236,9 +294,16 @@ export function PlannedExpensesPage() {
                       {expense.priority}
                     </span>
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {expense.status !== 'paid' && (
-                        <button onClick={() => handleMarkPaid(expense)} className="rounded-lg p-1.5 text-success hover:bg-success/5 cursor-pointer" title="Mark as paid">
-                          <CheckCircle className="h-3.5 w-3.5" />
+                      {expense.status !== 'paid' && expense.status !== 'cancelled' && (
+                        <button
+                          onClick={() => {
+                            setPayingExpense(expense)
+                            setPayForm({ amount: String(expense.amount), account_id: '', date: new Date().toISOString().split('T')[0] })
+                          }}
+                          className="rounded-lg bg-cta/10 px-2 py-1 text-xs font-medium text-cta hover:bg-cta/20 cursor-pointer"
+                          title="Pay this planned expense"
+                        >
+                          <Wallet className="inline h-3 w-3 mr-1" />Pay
                         </button>
                       )}
                       <button onClick={() => handleEdit(expense)} className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer">
@@ -420,6 +485,81 @@ export function PlannedExpensesPage() {
                 </button>
               </div>
             </form>
+          </div>
+        )}
+
+        {/* Pay form */}
+        {payingExpense && (
+          <div className="card border-accent/30">
+            <h3 className="mb-2 text-lg font-semibold text-text">
+              Pay {payingExpense.title}
+            </h3>
+            <p className="mb-4 text-sm text-text-muted">
+              Amount: {formatCurrency(payingExpense.amount)}
+            </p>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div>
+                  <label htmlFor="pay-amount" className="label">Amount to pay (₦)</label>
+                  <input
+                    id="pay-amount"
+                    type="number"
+                    value={payForm.amount}
+                    onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })}
+                    className="input-field"
+                    placeholder="0"
+                    required
+                  />
+                </div>
+                <div>
+                  <label htmlFor="pay-account" className="label">Pay from account</label>
+                  <select
+                    id="pay-account"
+                    value={payForm.account_id}
+                    onChange={(e) => setPayForm({ ...payForm, account_id: e.target.value })}
+                    className="input-field"
+                    required
+                  >
+                    <option value="">Select account</option>
+                    {accounts.map((a) => (
+                      <option key={a.id} value={a.id}>{a.name} ({formatCurrency(a.balance)})</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="pay-date" className="label">Date</label>
+                  <input
+                    id="pay-date"
+                    type="date"
+                    value={payForm.date}
+                    onChange={(e) => setPayForm({ ...payForm, date: e.target.value })}
+                    className="input-field"
+                    required
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handlePay}
+                  disabled={!payForm.amount || !payForm.account_id || paying}
+                  className="btn-primary"
+                >
+                  {paying ? 'Saving...' : 'Confirm payment'}
+                </button>
+                <button
+                  onClick={() => {
+                    setPayingExpense(null)
+                    setPayForm({ amount: '', account_id: '', date: new Date().toISOString().split('T')[0] })
+                  }}
+                  className="btn-secondary"
+                >
+                  Cancel
+                </button>
+              </div>
+              <p className="text-xs text-text-muted">
+                This creates an expense transaction and deducts from the selected account.
+              </p>
+            </div>
           </div>
         )}
 
