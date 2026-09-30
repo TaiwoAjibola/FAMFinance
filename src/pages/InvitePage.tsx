@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
+import { useHousehold } from '@/contexts/HouseholdContext'
 import { Layout } from '@/components/layout/Layout'
 import { Users, Mail, Shield, CheckCircle, AlertCircle, Loader2, Share2 } from 'lucide-react'
 
@@ -19,6 +20,7 @@ interface InviteDetails {
 export function InvitePage() {
   const { token } = useParams<{ token: string }>()
   const { user } = useAuth()
+  const { household } = useHousehold()
   const navigate = useNavigate()
   const [invite, setInvite] = useState<InviteDetails | null>(null)
   const [loading, setLoading] = useState(true)
@@ -83,6 +85,33 @@ export function InvitePage() {
       return
     }
 
+    // Already a member of this household? Just mark accepted and go in.
+    const { data: existing } = await supabase
+      .from('household_members')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('household_id', invite.household_id)
+      .maybeSingle()
+
+    if (existing) {
+      await supabase.from('invitations').update({ status: 'accepted' }).eq('id', invite.id)
+      setAccepted(true)
+      setAccepting(false)
+      setTimeout(() => {
+        navigate('/')
+        window.location.reload()
+      }, 1500)
+      return
+    }
+
+    // Joining via invite = this becomes their household. Remove any old
+    // memberships so the app never sees two households for one user.
+    await supabase
+      .from('household_members')
+      .delete()
+      .eq('user_id', user.id)
+      .neq('household_id', invite.household_id)
+
     const { error: memberErr } = await supabase.from('household_members').insert({
       household_id: invite.household_id,
       user_id: user.id,
@@ -90,11 +119,7 @@ export function InvitePage() {
     })
 
     if (memberErr) {
-      if (memberErr.message.includes('duplicate')) {
-        setError('You are already a member of this household')
-      } else {
-        setError(memberErr.message)
-      }
+      setError(memberErr.message)
       setAccepting(false)
       return
     }
@@ -151,9 +176,18 @@ export function InvitePage() {
             <AlertCircle className="mx-auto h-12 w-12 text-danger" />
             <h2 className="mt-4 text-lg font-semibold text-text">Invite Error</h2>
             <p className="mt-2 text-sm text-text-muted">{error}</p>
-            <Link to="/" className="btn-primary mt-6 inline-flex">
-              Go to Dashboard
-            </Link>
+            <p className="mt-1 text-xs text-text-muted">
+              Ask the person who invited you to send a fresh link.
+            </p>
+            {!user ? (
+              <Link to="/login" className="btn-primary mt-6 inline-flex">
+                Go to sign in
+              </Link>
+            ) : (
+              <Link to={household ? '/' : '/setup'} className="btn-primary mt-6 inline-flex">
+                {household ? 'Go to Dashboard' : 'Set up your household'}
+              </Link>
+            )}
           </div>
         </div>
       </Layout>

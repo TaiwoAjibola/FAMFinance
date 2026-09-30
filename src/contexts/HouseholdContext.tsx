@@ -73,12 +73,16 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
     setLoading(true)
 
     try {
-      const { data: membership, error: membershipError } = await supabase
+      // Pick the most recent membership (a user may have joined multiple
+      // households over time; the latest is their active one)
+      const { data: memberships, error: membershipError } = await supabase
         .from('household_members')
-        .select('household_id, role')
+        .select('household_id, role, joined_at')
         .eq('user_id', user.id)
-        .single()
+        .order('joined_at', { ascending: false })
+        .limit(1)
 
+      const membership = memberships?.[0]
       if (membershipError || !membership) {
         console.warn('No household membership found:', membershipError)
         setHousehold(null)

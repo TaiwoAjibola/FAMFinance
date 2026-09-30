@@ -317,6 +317,10 @@ CREATE POLICY "Members can view invitations" ON invitations FOR SELECT
   USING (is_household_member(household_id));
 CREATE POLICY "Public can view invitation by token" ON invitations FOR SELECT
   USING (true);
+-- Invitees can see invitations addressed to their own email (so the app can
+-- offer "accept invite" instead of "create household" after they sign in)
+CREATE POLICY "Users can view own invitations" ON invitations FOR SELECT
+  USING (lower(email) = lower(auth.jwt()->>'email'));
 
 -- Audit logs
 CREATE POLICY "Members can view audit logs" ON audit_logs FOR SELECT

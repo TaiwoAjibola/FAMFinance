@@ -1,11 +1,14 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { PasscodeInput } from '@/components/PasscodeInput'
+import { supabase } from '@/lib/supabase'
 
 export function SignUpPage() {
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
+  const [lockedEmail, setLockedEmail] = useState(false)
+  const [inviteHouseholdName, setInviteHouseholdName] = useState('')
   const [authMode, setAuthMode] = useState<'password' | 'passcode'>('passcode')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -16,6 +19,24 @@ export function SignUpPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const inviteToken = searchParams.get('invite')
+
+  // When following an invite link, pull the invited email + household name
+  // so the new account is guaranteed to match the invitation.
+  useEffect(() => {
+    if (!inviteToken) return
+    supabase
+      .from('invitations')
+      .select('email, status, households(name)')
+      .eq('token', inviteToken)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          setEmail(data.email || '')
+          setLockedEmail(true)
+          setInviteHouseholdName((data.households as unknown as { name?: string } | null)?.name || '')
+        }
+      })
+  }, [inviteToken])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -52,7 +73,9 @@ export function SignUpPage() {
         <div className="mb-8 text-center">
           <h1 className="text-3xl font-bold text-white">FamFinance</h1>
           <p className="mt-2 text-text-light">
-            {inviteToken ? 'Create your account to join the household' : 'Household Finance Manager'}
+            {inviteToken
+              ? `Create your account to join ${inviteHouseholdName || 'the household'}`
+              : 'Household Finance Manager'}
           </p>
         </div>
 
@@ -89,7 +112,16 @@ export function SignUpPage() {
                 className="input-field"
                 placeholder="you@example.com"
                 required
+                disabled={lockedEmail}
+                readOnly={lockedEmail}
               />
+              {lockedEmail && (
+                <p className="mt-1 text-xs text-text-muted">
+                  {inviteHouseholdName
+                    ? `This is the email invited to join ${inviteHouseholdName}.`
+                    : 'This email was set by your invitation.'}
+                </p>
+              )}
             </div>
 
             {/* Password / Passcode toggle */}
