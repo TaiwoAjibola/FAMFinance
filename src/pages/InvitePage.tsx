@@ -4,7 +4,8 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { useHousehold } from '@/contexts/HouseholdContext'
 import { Layout } from '@/components/layout/Layout'
-import { Users, Mail, Shield, CheckCircle, AlertCircle, Loader2, Share2 } from 'lucide-react'
+import { PasscodeInput } from '@/components/PasscodeInput'
+import { Users, Mail, Shield, CheckCircle, AlertCircle, Loader2, Share2, LogOut } from 'lucide-react'
 
 interface InviteDetails {
   id: string
@@ -19,19 +20,42 @@ interface InviteDetails {
 
 export function InvitePage() {
   const { token } = useParams<{ token: string }>()
-  const { user } = useAuth()
+  const { user, signOut } = useAuth()
   const { household } = useHousehold()
   const navigate = useNavigate()
   const [invite, setInvite] = useState<InviteDetails | null>(null)
   const [loading, setLoading] = useState(true)
-  const [accepting, setAccepting] = useState(false)
+  const [working, setWorking] = useState(false)
   const [error, setError] = useState('')
   const [accepted, setAccepted] = useState(false)
+  const [alreadyMember, setAlreadyMember] = useState(false)
+  const [signingOut, setSigningOut] = useState(false)
+
+  // Passcode / password setup
+  const [authMode, setAuthMode] = useState<'passcode' | 'password'>('passcode')
+  const [passcode, setPasscode] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
 
   useEffect(() => {
     if (!token) return
     fetchInvite()
   }, [token])
+
+  // Is the signed-in user already a member of the inviting household?
+  useEffect(() => {
+    if (!user || !invite || user.email !== invite.email) {
+      setAlreadyMember(false)
+      return
+    }
+    supabase
+      .from('household_members')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('household_id', invite.household_id)
+      .maybeSingle()
+      .then(({ data }) => setAlreadyMember(!!data))
+  }, [user, invite])
 
   const fetchInvite = async () => {
     if (!token) return
@@ -74,68 +98,78 @@ export function InvitePage() {
     setLoading(false)
   }
 
-  const handleAccept = async () => {
+  // Set a fresh passcode/password (a signed-in user can replace their
+  // password without knowing the old one), then join the household.
+  const handleSetUpAndJoin = async () => {
     if (!user || !invite) return
-    setAccepting(true)
     setError('')
 
-    if (user.email !== invite.email) {
-      setError(`This invite is for ${invite.email}. Please sign in with that account.`)
-      setAccepting(false)
+    let secret: string
+    if (authMode === 'passcode') {
+      if (passcode.length !== 6) {
+        setError('Enter all 6 digits of your passcode')
+        return
+      }
+      secret = passcode
+    } else {
+      if (password.length < 6) {
+        setError('Password must be at least 6 characters')
+        return
+      }
+      if (password !== confirmPassword) {
+        setError('Passwords do not match')
+        return
+      }
+      secret = password
+    }
+
+    setWorking(true)
+
+    // 1. Save their new passcode/password afresh
+    const { error: pwErr } = await supabase.auth.updateUser({ password: secret })
+    if (pwErr) {
+      setError(pwErr.message)
+      setWorking(false)
       return
     }
 
-    // Already a member of this household? Just mark accepted and go in.
-    const { data: existing } = await supabase
-      .from('household_members')
-      .select('id')
-      .eq('user_id', user.id)
-      .eq('household_id', invite.household_id)
-      .maybeSingle()
+    // 2. Join the household (this becomes their household; remove any old
+    //    memberships so the app never sees two households for one user)
+    if (!alreadyMember) {
+      await supabase
+        .from('household_members')
+        .delete()
+        .eq('user_id', user.id)
+        .neq('household_id', invite.household_id)
 
-    if (existing) {
-      await supabase.from('invitations').update({ status: 'accepted' }).eq('id', invite.id)
-      setAccepted(true)
-      setAccepting(false)
-      setTimeout(() => {
-        navigate('/')
-        window.location.reload()
-      }, 1500)
-      return
+      const { error: memberErr } = await supabase.from('household_members').insert({
+        household_id: invite.household_id,
+        user_id: user.id,
+        role: invite.role,
+      })
+
+      if (memberErr) {
+        setError(memberErr.message)
+        setWorking(false)
+        return
+      }
     }
 
-    // Joining via invite = this becomes their household. Remove any old
-    // memberships so the app never sees two households for one user.
-    await supabase
-      .from('household_members')
-      .delete()
-      .eq('user_id', user.id)
-      .neq('household_id', invite.household_id)
-
-    const { error: memberErr } = await supabase.from('household_members').insert({
-      household_id: invite.household_id,
-      user_id: user.id,
-      role: invite.role,
-    })
-
-    if (memberErr) {
-      setError(memberErr.message)
-      setAccepting(false)
-      return
-    }
-
-    await supabase
-      .from('invitations')
-      .update({ status: 'accepted' })
-      .eq('id', invite.id)
+    await supabase.from('invitations').update({ status: 'accepted' }).eq('id', invite.id)
 
     setAccepted(true)
-    setAccepting(false)
+    setWorking(false)
 
     setTimeout(() => {
       navigate('/')
       window.location.reload()
     }, 1500)
+  }
+
+  const handleSignOutAndContinue = async () => {
+    setSigningOut(true)
+    await signOut()
+    setSigningOut(false)
   }
 
   const handleShare = async () => {
@@ -153,7 +187,7 @@ export function InvitePage() {
         }
       }
     }
-    
+
     await navigator.clipboard.writeText(url)
     alert('Link copied! Share it via WhatsApp or any app.')
   }
@@ -208,6 +242,8 @@ export function InvitePage() {
     )
   }
 
+  const emailMatches = !!user && !!invite && user.email === invite.email
+
   return (
     <Layout>
       <div className="flex items-center justify-center py-20">
@@ -238,44 +274,136 @@ export function InvitePage() {
                 <p className="text-sm font-medium text-text capitalize">{invite?.role}</p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <Share2 className="h-4 w-4 text-text-muted" />
-              <div>
-                <p className="text-xs text-text-muted">Share this invite</p>
-                <button onClick={handleShare} className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-cta hover:text-cta-light cursor-pointer">
-                  <Share2 className="h-3 w-3" /> Share via WhatsApp / Apps
-                </button>
+            {!user && (
+              <div className="flex items-center gap-3">
+                <Share2 className="h-4 w-4 text-text-muted" />
+                <div>
+                  <p className="text-xs text-text-muted">Share this invite</p>
+                  <button onClick={handleShare} className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-cta hover:text-cta-light cursor-pointer">
+                    <Share2 className="h-3 w-3" /> Share via WhatsApp / Apps
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {error && (
             <div className="mt-4 rounded-lg bg-danger/10 p-3 text-sm text-danger">{error}</div>
           )}
 
-          <div className="mt-6 space-y-3">
-            {!user ? (
-              <>
-                <Link to={`/signup?invite=${token}`} className="btn-primary w-full justify-center">
-                  Create account & join
+          {!user ? (
+            /* Not signed in: create the account (passcode set during signup),
+               or sign in and then set a fresh passcode here */
+            <div className="mt-6 space-y-3">
+              <Link to={`/signup?invite=${token}`} className="btn-primary w-full justify-center">
+                Create account & join
+              </Link>
+              <p className="text-center text-xs text-text-muted">
+                Already have an account?{' '}
+                <Link to={`/login?invite=${token}`} className="font-medium text-cta hover:text-cta-light">
+                  Sign in to accept
                 </Link>
-                <p className="text-center text-xs text-text-muted">
-                  Already have an account?{' '}
-                  <Link to={`/login?invite=${token}`} className="font-medium text-cta hover:text-cta-light">
-                    Sign in to accept
-                  </Link>
-                </p>
-              </>
-            ) : (
+              </p>
+            </div>
+          ) : !emailMatches ? (
+            /* Signed in as the wrong person for this invite */
+            <div className="mt-6 space-y-3">
+              <div className="rounded-lg bg-warning/10 p-3 text-sm text-warning">
+                You're signed in as <span className="font-medium">{user.email}</span>, but this
+                invite was sent to <span className="font-medium">{invite?.email}</span>.
+              </div>
               <button
-                onClick={handleAccept}
-                disabled={accepting}
+                onClick={handleSignOutAndContinue}
+                disabled={signingOut}
                 className="btn-primary w-full justify-center"
               >
-                {accepting ? 'Joining...' : 'Accept invitation'}
+                <LogOut className="h-4 w-4" />
+                {signingOut ? 'Signing out...' : `Sign out & continue as ${invite?.email}`}
               </button>
-            )}
-          </div>
+            </div>
+          ) : (
+            /* Signed in as the invited person: set a passcode afresh, then join */
+            <div className="mt-6 space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold text-text">
+                  {alreadyMember
+                    ? "You're already a member — set a new passcode to continue"
+                    : 'Set your passcode to join'}
+                </h3>
+                <p className="mt-1 text-xs text-text-muted">
+                  This replaces any old password. You'll use it to sign in from now on.
+                </p>
+              </div>
+
+              <div className="flex rounded-lg bg-surface-alt p-1" role="tablist">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={authMode === 'passcode'}
+                  onClick={() => setAuthMode('passcode')}
+                  className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    authMode === 'passcode' ? 'bg-surface text-cta shadow-sm' : 'text-text-muted'
+                  }`}
+                >
+                  6-digit passcode
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={authMode === 'password'}
+                  onClick={() => setAuthMode('password')}
+                  className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    authMode === 'password' ? 'bg-surface text-cta shadow-sm' : 'text-text-muted'
+                  }`}
+                >
+                  Password
+                </button>
+              </div>
+
+              {authMode === 'passcode' ? (
+                <PasscodeInput value={passcode} onChange={setPasscode} />
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <label htmlFor="invite-password" className="label">Password</label>
+                    <input
+                      id="invite-password"
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="input-field"
+                      placeholder="••••••••"
+                      minLength={6}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="invite-confirm" className="label">Confirm password</label>
+                    <input
+                      id="invite-confirm"
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="input-field"
+                      placeholder="••••••••"
+                      minLength={6}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={handleSetUpAndJoin}
+                disabled={working}
+                className="btn-primary w-full justify-center"
+              >
+                {working
+                  ? 'Setting up...'
+                  : alreadyMember
+                    ? 'Save passcode & enter household'
+                    : 'Set passcode & join household'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </Layout>

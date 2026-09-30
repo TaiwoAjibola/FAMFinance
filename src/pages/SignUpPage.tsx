@@ -15,6 +15,7 @@ export function SignUpPage() {
   const [passcode, setPasscode] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [alreadyRegistered, setAlreadyRegistered] = useState(false)
   const { signUp } = useAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -60,7 +61,14 @@ export function SignUpPage() {
     setLoading(true)
     const result = await signUp(email, secret, fullName)
     if (result.error) {
-      setError(result.error)
+      // An account with this email already exists (e.g. created during an
+      // earlier test). Point them at sign-in instead — the invite page will
+      // then let them set a fresh passcode once signed in.
+      if (result.error.toLowerCase().includes('already')) {
+        setAlreadyRegistered(true)
+      } else {
+        setError(result.error)
+      }
       setLoading(false)
     } else {
       navigate(inviteToken ? `/invite/${inviteToken}` : '/setup')
@@ -82,6 +90,26 @@ export function SignUpPage() {
         <div className="card">
           <h2 className="mb-6 text-xl font-semibold text-text">Create account</h2>
 
+          {alreadyRegistered ? (
+            <div className="space-y-4">
+              <div className="rounded-lg bg-warning/10 p-3 text-sm text-warning">
+                An account already exists for <span className="font-medium">{email || 'this email'}</span>{' '}
+                — it may have been created during an earlier test.
+              </div>
+              <p className="text-sm text-text-muted">
+                Sign in with your existing passcode or password. If you can't remember it,
+                ask the household owner to send you the invite link again — you'll be able
+                to set a brand-new passcode once you're signed in.
+              </p>
+              <Link
+                to={inviteToken ? `/login?invite=${inviteToken}` : '/login'}
+                className="btn-primary w-full justify-center"
+              >
+                Sign in instead
+              </Link>
+            </div>
+          ) : (
+            <>
           {error && (
             <div role="alert" className="mb-4 rounded-lg bg-danger/10 p-3 text-sm text-danger">
               {error}
@@ -193,6 +221,8 @@ export function SignUpPage() {
               {loading ? 'Creating account...' : inviteToken ? 'Create account & join' : 'Create account'}
             </button>
           </form>
+            </>
+          )}
 
           <p className="mt-6 text-center text-sm text-text-muted">
             Already have an account?{' '}

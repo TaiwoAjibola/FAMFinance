@@ -34,9 +34,9 @@ export function SetupPage() {
     id: string
     household_id: string
     role: string
+    token: string
     household_name?: string
   } | null>(null)
-  const [accepting, setAccepting] = useState(false)
   const { createHousehold, household, loading: hhLoading } = useHousehold()
   const { user, loading: authLoading } = useAuth()
   const navigate = useNavigate()
@@ -47,7 +47,7 @@ export function SetupPage() {
     if (!user?.email) return
     supabase
       .from('invitations')
-      .select('id, household_id, role, status, expires_at, households(name)')
+      .select('id, household_id, role, token, status, expires_at, households(name)')
       .eq('email', user.email)
       .eq('status', 'pending')
       .order('created_at', { ascending: false })
@@ -59,29 +59,12 @@ export function SetupPage() {
             id: data.id,
             household_id: data.household_id,
             role: data.role,
+            token: data.token,
             household_name: (data.households as unknown as { name?: string } | null)?.name,
           })
         }
       })
   }, [user])
-
-  const handleAcceptInvite = async () => {
-    if (!user || !pendingInvite) return
-    setAccepting(true)
-    const { error: memberErr } = await supabase.from('household_members').insert({
-      household_id: pendingInvite.household_id,
-      user_id: user.id,
-      role: pendingInvite.role,
-    })
-    if (memberErr) {
-      setError(memberErr.message)
-      setAccepting(false)
-      return
-    }
-    await supabase.from('invitations').update({ status: 'accepted' }).eq('id', pendingInvite.id)
-    navigate('/')
-    window.location.reload()
-  }
 
   // Never show "create household" to someone who already belongs to one,
   // and require sign-in first.
@@ -118,11 +101,10 @@ export function SetupPage() {
               </div>
             )}
             <button
-              onClick={handleAcceptInvite}
-              disabled={accepting}
+              onClick={() => navigate(`/invite/${pendingInvite.token}`)}
               className="btn-primary mt-6 w-full"
             >
-              {accepting ? 'Joining...' : 'Accept invitation'}
+              Set your passcode & join
             </button>
           </div>
         </div>
