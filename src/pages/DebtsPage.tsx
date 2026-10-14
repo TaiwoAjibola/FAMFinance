@@ -4,14 +4,15 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useHousehold } from '@/contexts/HouseholdContext'
 import { formatCurrency } from '@/lib/utils'
 import { Layout } from '@/components/layout/Layout'
-import { Plus, HandCoins, Pencil, Trash2, Check, Wallet } from 'lucide-react'
-import type { Debt, Account } from '@/types'
+import { Plus, HandCoins, Pencil, Trash2, Check, Wallet, History } from 'lucide-react'
+import type { Debt, Account, DebtRepayment } from '@/types'
 
 export function DebtsPage() {
   const { user } = useAuth()
   const { household } = useHousehold()
   const [debts, setDebts] = useState<Debt[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
+  const [repayments, setRepayments] = useState<DebtRepayment[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingDebt, setEditingDebt] = useState<Debt | null>(null)
@@ -29,6 +30,9 @@ export function DebtsPage() {
   const [repayForm, setRepayForm] = useState({ amount: '', account_id: '', date: new Date().toISOString().split('T')[0], notes: '' })
   const [repaying, setRepaying] = useState(false)
 
+  // Repayment history viewer
+  const [showHistoryFor, setShowHistoryFor] = useState<string | null>(null)
+
   useEffect(() => {
     if (!household) return
     fetchData()
@@ -38,7 +42,7 @@ export function DebtsPage() {
     if (!household) return
     setLoading(true)
 
-    const [debtRes, accountRes] = await Promise.all([
+    const [debtRes, accountRes, repayRes] = await Promise.all([
       supabase
         .from('debts')
         .select('*')
@@ -49,10 +53,17 @@ export function DebtsPage() {
         .select('*')
         .eq('household_id', household.id)
         .eq('is_active', true),
+      supabase
+        .from('debt_repayments')
+        .select('*, account:accounts(name)')
+        .order('date', { ascending: false }),
     ])
 
     setDebts(debtRes.data || [])
     setAccounts(accountRes.data || [])
+    // Only repayments that belong to this household's debts
+    const debtIds = new Set((debtRes.data || []).map((d) => d.id))
+    setRepayments((repayRes.data || []).filter((r) => debtIds.has(r.debt_id)))
     setLoading(false)
   }
 
@@ -135,7 +146,7 @@ export function DebtsPage() {
     setRepaying(true)
 
     // 1. Create expense transaction
-    const { error: txnErr } = await supabase
+    const { data: txn, error: txnErr } = await supabase
       .from('transactions')
       .insert({
         household_id: household!.id,
@@ -166,7 +177,18 @@ export function DebtsPage() {
         .eq('id', repayForm.account_id)
     }
 
-    // 3. Update debt
+    // 3. Record repayment history
+    await supabase.from('debt_repayments').insert({
+      debt_id: repayingDebt.id,
+      amount,
+      date: repayForm.date,
+      account_id: repayForm.account_id,
+      notes: repayForm.notes || null,
+      transaction_id: txn?.id || null,
+      created_by: user!.id,
+    })
+
+    // 4. Update debt
     const newRepaid = repayingDebt.amount_repaid + amount
     const newStatus = newRepaid >= repayingDebt.amount ? 'fully_paid' : 'active'
     await supabase
@@ -383,6 +405,7 @@ export function DebtsPage() {
               const isFullyPaid = debt.status === 'fully_paid'
               const isCancelled = debt.status === 'cancelled'
               const isOverdue = debt.due_date && new Date(debt.due_date) < new Date() && !isFullyPaid && !isCancelled
+              const debtRepayments = repayments.filter((r) => r.debt_id === debt.id)
 
               return (
                 <div key={debt.id} className="card-hover group">
@@ -396,14 +419,15 @@ export function DebtsPage() {
                         }`} />
                       </div>
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <p className="text-sm font-medium text-text">{debt.lender_name}</p>
-                          {isFullyPaid && <span className="rounded bg-success/10 px-1.5 py-0.5 text-[10px] font-medium text-success">Paid</span>}
+                          {isFullyPaid && <span className="rounded bg-success/10 px-1.5 py-0.5 text-[10px] font-medium text-success">Fully paid</span>}
+                          {!isFullyPaid && !isCancelled && debt.amount_repaid > 0 && <span className="rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning">Partially paid</span>}
                           {isCancelled && <span className="rounded bg-text-light/10 px-1.5 py-0.5 text-[10px] font-medium text-text-muted">Cancelled</span>}
                           {isOverdue && <span className="rounded bg-danger/10 px-1.5 py-0.5 text-[10px] font-medium text-danger">Overdue</span>}
                         </div>
                         <p className="text-xs text-text-muted">
-                          Borrowed {debt.date_borrowed}
+                          Borrowed {formatCurrency(debt.amount)} on {debt.date_borrowed}
                           {debt.due_date && ` • Due ${debt.due_date}`}
                           {debt.notes && ` • ${debt.notes}`}
                         </p>
@@ -418,14 +442,23 @@ export function DebtsPage() {
                           <p className="text-xs text-text-muted">{formatCurrency(remaining)} left</p>
                         )}
                       </div>
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                         {!isFullyPaid && !isCancelled && (
                           <button
                             onClick={() => { setRepayingDebt(debt); setRepayForm({ amount: '', account_id: '', date: new Date().toISOString().split('T')[0], notes: '' }) }}
                             className="rounded-lg bg-cta/10 px-2 py-1 text-xs font-medium text-cta hover:bg-cta/20 cursor-pointer"
-                            title="Repay"
+                            title="Repay (full or partial)"
                           >
                             <Wallet className="inline h-3 w-3 mr-1" />Pay
+                          </button>
+                        )}
+                        {debtRepayments.length > 0 && (
+                          <button
+                            onClick={() => setShowHistoryFor(showHistoryFor === debt.id ? null : debt.id)}
+                            className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer"
+                            title="Repayment history"
+                          >
+                            <History className="h-3.5 w-3.5" />
                           </button>
                         )}
                         <button onClick={() => handleEdit(debt)} className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer">
@@ -442,7 +475,7 @@ export function DebtsPage() {
                   {!isCancelled && debt.amount > 0 && (
                     <div className="mt-3">
                       <div className="flex items-center justify-between text-xs text-text-muted mb-1">
-                        <span>{formatCurrency(debt.amount_repaid)} repaid</span>
+                        <span>{formatCurrency(debt.amount_repaid)} of {formatCurrency(debt.amount)} repaid</span>
                         <span>{Math.round(progress)}%</span>
                       </div>
                       <div className="h-1.5 rounded-full bg-surface-alt overflow-hidden">
@@ -450,6 +483,25 @@ export function DebtsPage() {
                           className={`h-full rounded-full transition-all ${isFullyPaid ? 'bg-success' : 'bg-cta'}`}
                           style={{ width: `${progress}%` }}
                         />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Repayment history */}
+                  {showHistoryFor === debt.id && debtRepayments.length > 0 && (
+                    <div className="mt-3 rounded-lg border border-border p-3">
+                      <p className="mb-2 text-xs font-medium text-text-muted">Repayment history</p>
+                      <div className="space-y-1.5">
+                        {debtRepayments.map((r) => (
+                          <div key={r.id} className="flex items-center justify-between text-xs">
+                            <span className="text-text-muted">
+                              {r.date} • {formatCurrency(r.amount)}
+                              {r.account?.name && ` from ${r.account.name}`}
+                              {r.notes && ` • ${r.notes}`}
+                            </span>
+                            <span className="text-text-light">recorded {(r.created_at || '').split('T')[0]}</span>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}

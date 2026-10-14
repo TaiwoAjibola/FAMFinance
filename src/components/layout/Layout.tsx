@@ -6,7 +6,7 @@ import {
   LayoutDashboard,
   Wallet,
   ArrowDownCircle,
-  ArrowUpCircle,
+  ArrowRightLeft,
   PiggyBank,
   Calendar,
   Target,
@@ -24,7 +24,7 @@ const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/accounts', label: 'Accounts', icon: Wallet },
   { path: '/income', label: 'Income', icon: ArrowDownCircle },
-  { path: '/expenses', label: 'Expenses', icon: ArrowUpCircle },
+  { path: '/expenses', label: 'Transactions', icon: ArrowRightLeft },
   { path: '/debts', label: 'Debts', icon: HandCoins },
   { path: '/budget', label: 'Budget', icon: Calendar },
   { path: '/planned', label: 'Planned', icon: Target },
@@ -42,7 +42,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const handleSignOut = async () => {
     await signOut()
-    navigate('/login')
+    navigate('/')
   }
 
   return (

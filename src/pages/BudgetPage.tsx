@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Fragment } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { useHousehold } from '@/contexts/HouseholdContext'
 import { formatCurrency, getCurrentMonth, getMonthLabel, previousMonth, nextMonth } from '@/lib/utils'
 import { Layout } from '@/components/layout/Layout'
+import { Table, Th, Td } from '@/components/Table'
 import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Check, X, Repeat, Tag, Settings, Wallet, History } from 'lucide-react'
 import type { Category, BudgetItem, MonthlyBudget, Account, BudgetPayment } from '@/types'
 
@@ -15,6 +17,7 @@ export function BudgetPage() {
   const [budgetItems, setBudgetItems] = useState<BudgetItem[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
+  const [monthOverview, setMonthOverview] = useState({ expectedIncome: 0, receivedIncome: 0, plannedCount: 0, plannedTotal: 0 })
   const [loading, setLoading] = useState(true)
 
   // Budget item forms
@@ -115,6 +118,45 @@ export function BudgetPage() {
         setItemPayments({})
       }
     }
+
+    // Month overview: expected vs received income, and planned expenses
+    const monthStart = currentMonth + '-01'
+    const [y, m] = currentMonth.split('-').map(Number)
+    const nextMonthDate = new Date(y, m, 1) // month is 0-indexed: y, m => next month
+    const nextStart = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, '0')}-01`
+    const [incomeRes, plannedRes] = await Promise.all([
+      supabase
+        .from('transactions')
+        .select('amount, received_amount, status, parent_income_id')
+        .eq('household_id', household.id)
+        .eq('type', 'income')
+        .gte('date', monthStart)
+        .lt('date', nextStart),
+      supabase
+        .from('planned_expenses')
+        .select('id, amount, status')
+        .eq('household_id', household.id)
+        .eq('target_month', currentMonth)
+        .neq('status', 'cancelled'),
+    ])
+
+    const incomeRows = incomeRes.data || []
+    const parents = incomeRows.filter((t) => !t.parent_income_id && t.status !== 'cancelled')
+    const oneShotReceived = parents
+      .filter((p) => p.status === 'received' && !(p.received_amount || 0))
+      .reduce((sum, p) => sum + p.amount, 0)
+    const progressiveReceived = parents.reduce((sum, p) => sum + (p.received_amount || 0), 0)
+    const overview = {
+      expectedIncome: parents
+        .filter((p) => p.status === 'expected' || p.status === 'partially_received')
+        .reduce((sum, p) => sum + (p.amount - (p.received_amount || 0)), 0),
+      receivedIncome: oneShotReceived + progressiveReceived,
+      plannedCount: (plannedRes.data || []).length,
+      plannedTotal: (plannedRes.data || [])
+        .filter((p) => p.status !== 'paid')
+        .reduce((sum, p) => sum + p.amount, 0),
+    }
+    setMonthOverview(overview)
 
     setLoading(false)
   }
@@ -393,6 +435,45 @@ export function BudgetPage() {
               </div>
             </div>
 
+            {/* Month overview: plan vs actual */}
+            <div className="card">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-text">Month overview</h2>
+                <Link to="/planned" className="text-xs font-medium text-cta hover:text-cta-light">
+                  View planned expenses
+                </Link>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-lg bg-surface-alt p-3">
+                  <p className="text-xs font-medium text-text-muted uppercase tracking-wide">Money coming in</p>
+                  <p className="mt-1 text-sm text-text">
+                    <span className="font-semibold text-success">{formatCurrency(monthOverview.receivedIncome)}</span> received
+                  </p>
+                  <p className="text-xs text-text-muted">
+                    + {formatCurrency(monthOverview.expectedIncome)} still expected
+                  </p>
+                </div>
+                <div className="rounded-lg bg-surface-alt p-3">
+                  <p className="text-xs font-medium text-text-muted uppercase tracking-wide">Monthly budget</p>
+                  <p className="mt-1 text-sm text-text">
+                    <span className="font-semibold text-text">{formatCurrency(totalSpent)}</span> spent
+                  </p>
+                  <p className="text-xs text-text-muted">
+                    of {formatCurrency(totalBudgeted)} planned
+                  </p>
+                </div>
+                <div className="rounded-lg bg-surface-alt p-3">
+                  <p className="text-xs font-medium text-text-muted uppercase tracking-wide">Planned expenses</p>
+                  <p className="mt-1 text-sm text-text">
+                    <span className="font-semibold text-cta">{formatCurrency(monthOverview.plannedTotal)}</span> upcoming
+                  </p>
+                  <p className="text-xs text-text-muted">
+                    {monthOverview.plannedCount} planned item{monthOverview.plannedCount !== 1 ? 's' : ''} this month
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {/* Category management */}
             <div className="card">
               <button onClick={() => setShowCategories(!showCategories)} className="flex w-full items-center justify-between cursor-pointer">
@@ -514,119 +595,161 @@ export function BudgetPage() {
             )}
 
             {/* Budget items */}
-            <div className="card">
-              <div className="mb-4 flex items-center justify-between">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-text">Budget items</h2>
                 {!addingItem && <button onClick={() => setAddingItem(true)} className="btn-primary text-sm"><Plus className="h-4 w-4" />Add item</button>}
               </div>
 
-              {budgetItems.length === 0 ? (
-                <div className="py-8 text-center">
-                  <p className="text-sm text-text-muted">No budget items yet</p>
-                  <button onClick={() => setAddingItem(true)} className="btn-primary mt-3"><Plus className="h-4 w-4" />Add your first budget item</button>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {budgetItems.map((item) => {
-                    const remaining = item.budgeted_amount - item.spent_amount
-                    const isEditing = editingItem === item.id
-                    const payments = itemPayments[item.id] || []
-                    const isFullyPaid = item.spent_amount >= item.budgeted_amount
+              <Table>
+                <thead>
+                  <tr>
+                    <Th>Category</Th>
+                    <Th align="right">Planned amount</Th>
+                    <Th align="right">Actual spending</Th>
+                    <Th align="right">Remaining</Th>
+                    <Th align="right">% used</Th>
+                    <Th align="right">Actions</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {budgetItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-3 py-8 text-center">
+                        <p className="text-sm text-text-muted">No budget items yet</p>
+                        <button onClick={() => setAddingItem(true)} className="btn-primary mt-3"><Plus className="h-4 w-4" />Add your first budget item</button>
+                      </td>
+                    </tr>
+                  ) : (
+                    budgetItems.map((item) => {
+                      const remaining = item.budgeted_amount - item.spent_amount
+                      const isEditing = editingItem === item.id
+                      const payments = itemPayments[item.id] || []
+                      const isFullyPaid = item.spent_amount >= item.budgeted_amount
+                      const pctUsed = item.budgeted_amount > 0 ? Math.min((item.spent_amount / item.budgeted_amount) * 100, 999) : 0
 
-                    return (
-                      <div key={item.id} className="rounded-lg border border-border hover:border-accent/30 transition-colors">
-                        {/* Main row */}
-                        <div className="grid grid-cols-12 gap-2 px-3 py-3 items-center">
-                          <div className="col-span-4">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-text">{getItemName(item)}</span>
-                              {item.is_recurring && <span title="Recurring"><Repeat className="h-3 w-3 text-accent" /></span>}
-                              {!item.category_id && item.custom_name && <span className="rounded bg-surface-alt px-1.5 py-0.5 text-[10px] text-text-muted">Custom</span>}
-                              {isFullyPaid && <span className="rounded bg-success/10 px-1.5 py-0.5 text-[10px] font-medium text-success">Paid</span>}
-                            </div>
-                          </div>
-                          <div className="col-span-2 text-right">
-                            {isEditing ? (
-                              <input type="number" value={editForm.budgeted_amount} onChange={(e) => setEditForm({ ...editForm, budgeted_amount: e.target.value })} className="input-field w-24 text-right text-sm" />
-                            ) : (
-                              <span className="text-sm text-text">{formatCurrency(item.budgeted_amount)}</span>
-                            )}
-                          </div>
-                          <div className="col-span-2 text-right">
-                            <span className={`text-sm font-medium ${item.spent_amount > 0 ? 'text-text' : 'text-text-muted'}`}>{formatCurrency(item.spent_amount)}</span>
-                          </div>
-                          <div className="col-span-2 text-right">
-                            <span className={`text-sm font-medium ${remaining >= 0 ? 'text-success' : 'text-danger'}`}>{formatCurrency(Math.abs(remaining))}</span>
-                          </div>
-                          <div className="col-span-2 text-right">
-                            {isEditing ? (
-                              <div className="flex items-center justify-end gap-1">
-                                <label className="flex items-center gap-1 cursor-pointer mr-2">
+                      return (
+                        <Fragment key={item.id}>
+                          <tr className="border-b border-border last:border-0 hover:bg-surface-alt/50">
+                            <Td>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-medium">{getItemName(item)}</span>
+                                {item.is_recurring && <span title="Recurring"><Repeat className="h-3 w-3 text-accent" /></span>}
+                                {!item.category_id && item.custom_name && <span className="rounded bg-surface-alt px-1.5 py-0.5 text-[10px] text-text-muted">Custom</span>}
+                                {isFullyPaid && <span className="rounded bg-success/10 px-1.5 py-0.5 text-[10px] font-medium text-success">Paid</span>}
+                              </div>
+                              {isEditing && (
+                                <label className="mt-1 flex items-center gap-1 text-xs text-text-muted">
                                   <input type="checkbox" checked={editForm.is_recurring} onChange={(e) => setEditForm({ ...editForm, is_recurring: e.target.checked })} className="h-3 w-3 rounded border-border text-cta focus:ring-cta" />
-                                  <span className="text-xs text-text-muted">Recur</span>
+                                  Recurs every month
                                 </label>
-                                <button onClick={() => handleUpdateItem(item.id)} disabled={saving} className="rounded-lg p-1.5 text-success hover:bg-success/5 cursor-pointer"><Check className="h-4 w-4" /></button>
-                                <button onClick={() => setEditingItem(null)} className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer"><X className="h-4 w-4" /></button>
+                              )}
+                            </Td>
+                            <Td align="right">
+                              {isEditing ? (
+                                <input type="number" value={editForm.budgeted_amount} onChange={(e) => setEditForm({ ...editForm, budgeted_amount: e.target.value })} className="input-field w-28 text-right text-sm" aria-label="Planned amount" />
+                              ) : (
+                                <span className="font-medium">{formatCurrency(item.budgeted_amount)}</span>
+                              )}
+                            </Td>
+                            <Td align="right">
+                              <span className={item.spent_amount > 0 ? 'font-medium' : 'text-text-muted'}>{formatCurrency(item.spent_amount)}</span>
+                            </Td>
+                            <Td align="right">
+                              <span className={`font-medium ${remaining >= 0 ? 'text-success' : 'text-danger'}`}>
+                                {remaining >= 0 ? '' : '−'}{formatCurrency(Math.abs(remaining))}
+                              </span>
+                            </Td>
+                            <Td align="right">
+                              <div className="flex items-center justify-end gap-2">
+                                <div className="h-1.5 w-14 rounded-full bg-surface-alt overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full ${pctUsed >= 100 ? 'bg-danger' : pctUsed >= 80 ? 'bg-warning' : 'bg-cta'}`}
+                                    style={{ width: `${Math.min(pctUsed, 100)}%` }}
+                                  />
+                                </div>
+                                <span className={`text-xs ${pctUsed >= 100 ? 'text-danger font-medium' : 'text-text-muted'}`}>
+                                  {Math.round(pctUsed)}%
+                                </span>
                               </div>
-                            ) : (
-                              <div className="flex items-center justify-end gap-1">
-                                {!isFullyPaid && (
-                                  <button onClick={() => { setPayingItem(item.id); setPayForm({ amount: '', date: new Date().toISOString().split('T')[0], account_id: '', notes: '' }) }} className="rounded-lg bg-cta/10 px-2 py-1 text-xs font-medium text-cta hover:bg-cta/20 cursor-pointer">
-                                    <Wallet className="inline h-3 w-3 mr-1" />Pay
+                            </Td>
+                            <Td align="right">
+                              {isEditing ? (
+                                <div className="flex justify-end gap-1">
+                                  <button onClick={() => handleUpdateItem(item.id)} disabled={saving} className="rounded-lg p-1.5 text-success hover:bg-success/5 cursor-pointer" title="Save"><Check className="h-4 w-4" /></button>
+                                  <button onClick={() => setEditingItem(null)} className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer" title="Cancel"><X className="h-4 w-4" /></button>
+                                </div>
+                              ) : (
+                                <div className="flex justify-end gap-1">
+                                  {!isFullyPaid && (
+                                    <button onClick={() => { setPayingItem(item.id); setPayForm({ amount: '', date: new Date().toISOString().split('T')[0], account_id: '', notes: '' }) }} className="rounded-lg bg-cta/10 px-2 py-1 text-xs font-medium text-cta hover:bg-cta/20 cursor-pointer">
+                                      <Wallet className="inline h-3 w-3 mr-1" />Pay
+                                    </button>
+                                  )}
+                                  <button onClick={() => setShowPayments(showPayments === item.id ? null : item.id)} className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer" title="Payment history">
+                                    <History className="h-3.5 w-3.5" />
                                   </button>
+                                  <button onClick={() => { setEditingItem(item.id); setEditForm({ budgeted_amount: String(item.budgeted_amount), is_recurring: item.is_recurring }) }} className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer" title="Edit"><Pencil className="h-3.5 w-3.5" /></button>
+                                  <button onClick={() => handleDeleteItem(item.id)} className="rounded-lg p-1.5 text-danger hover:bg-danger/5 cursor-pointer" title="Delete"><Trash2 className="h-3.5 w-3.5" /></button>
+                                </div>
+                              )}
+                            </Td>
+                          </tr>
+
+                          {/* Payment history (expanded row) */}
+                          {showPayments === item.id && (
+                            <tr className="bg-surface-alt/40">
+                              <td colSpan={6} className="px-3 py-2">
+                                <p className="mb-1 text-xs font-medium text-text-muted">Payment history</p>
+                                {payments.length === 0 ? (
+                                  <p className="text-xs text-text-muted">No payments recorded yet</p>
+                                ) : (
+                                  <div className="space-y-1">
+                                    {payments.map((p) => (
+                                      <div key={p.id} className="flex items-center justify-between text-xs">
+                                        <span className="text-text-muted">
+                                          {p.date} • {formatCurrency(p.amount)}
+                                          {(p.account as any)?.name ? ` from ${(p.account as any).name}` : ''}
+                                          {p.notes ? ` • ${p.notes}` : ''}
+                                        </span>
+                                        <button
+                                          onClick={() => handleRevertPayment(p, item)}
+                                          className="rounded p-1 text-danger hover:bg-danger/5 cursor-pointer"
+                                          title="Revert this payment"
+                                        >
+                                          <Trash2 className="h-3 w-3" />
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
                                 )}
-                                <button onClick={() => setShowPayments(showPayments === item.id ? null : item.id)} className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer" title="Payment history">
-                                  <History className="h-3.5 w-3.5" />
-                                </button>
-                                <button onClick={() => { setEditingItem(item.id); setEditForm({ budgeted_amount: String(item.budgeted_amount), is_recurring: item.is_recurring }) }} className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer"><Pencil className="h-3.5 w-3.5" /></button>
-                                <button onClick={() => handleDeleteItem(item.id)} className="rounded-lg p-1.5 text-danger hover:bg-danger/5 cursor-pointer"><Trash2 className="h-3.5 w-3.5" /></button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Payment history */}
-                        {showPayments === item.id && payments.length > 0 && (
-                          <div className="border-t border-border px-3 py-2">
-                            <p className="text-xs font-medium text-text-muted mb-2">Payment history</p>
-                            {payments.map((p) => (
-                              <div key={p.id} className="flex items-center justify-between py-1 text-xs">
-                                <span className="text-text-muted">{p.date}</span>
-                                <span className="text-text font-medium">{formatCurrency(p.amount)}</span>
-                                <span className="text-text-muted">{(p.account as any)?.name || '—'}</span>
-                                {p.notes && <span className="text-text-muted italic">{p.notes}</span>}
-                                <button
-                                  onClick={() => handleRevertPayment(p, item)}
-                                  className="rounded p-1 text-danger hover:bg-danger/5 cursor-pointer"
-                                  title="Revert this payment"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {showPayments === item.id && payments.length === 0 && (
-                          <div className="border-t border-border px-3 py-2">
-                            <p className="text-xs text-text-muted">No payments recorded yet</p>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-
-                  {/* Totals row */}
-                  <div className="grid grid-cols-12 gap-2 px-3 py-3 border-t border-border mt-2">
-                    <div className="col-span-4 text-sm font-semibold text-text">Total</div>
-                    <div className="col-span-2 text-right text-sm font-semibold text-text">{formatCurrency(totalBudgeted)}</div>
-                    <div className="col-span-2 text-right text-sm font-semibold text-text">{formatCurrency(totalSpent)}</div>
-                    <div className="col-span-2 text-right">
-                      <span className={`text-sm font-semibold ${variance >= 0 ? 'text-success' : 'text-danger'}`}>{formatCurrency(Math.abs(variance))}</span>
-                    </div>
-                    <div className="col-span-2"></div>
-                  </div>
-                </div>
-              )}
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      )
+                    })
+                  )}
+                </tbody>
+                {budgetItems.length > 0 && (
+                  <tfoot>
+                    <tr className="border-t-2 border-border">
+                      <Td className="font-semibold">Total</Td>
+                      <Td align="right" className="font-semibold">{formatCurrency(totalBudgeted)}</Td>
+                      <Td align="right" className="font-semibold">{formatCurrency(totalSpent)}</Td>
+                      <Td align="right">
+                        <span className={`font-semibold ${variance >= 0 ? 'text-success' : 'text-danger'}`}>
+                          {variance >= 0 ? '' : '−'}{formatCurrency(Math.abs(variance))}
+                        </span>
+                      </Td>
+                      <Td align="right" className="text-text-muted">
+                        {totalBudgeted > 0 ? Math.round((totalSpent / totalBudgeted) * 100) : 0}%
+                      </Td>
+                      <Td />
+                    </tr>
+                  </tfoot>
+                )}
+              </Table>
             </div>
           </>
         )}

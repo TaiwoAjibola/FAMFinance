@@ -74,6 +74,8 @@ CREATE TABLE IF NOT EXISTS transactions (
   installment_payment_id UUID,
   budget_item_id UUID REFERENCES budget_items(id),
   status TEXT DEFAULT 'received',
+  parent_income_id UUID REFERENCES transactions(id) ON DELETE SET NULL,
+  received_amount INTEGER NOT NULL DEFAULT 0,
   created_by UUID NOT NULL REFERENCES users(id),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -184,6 +186,7 @@ CREATE TABLE IF NOT EXISTS savings_goals (
   target_date DATE,
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed', 'paused', 'cancelled')),
   notes TEXT,
+  destination_account_id UUID REFERENCES accounts(id),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -227,6 +230,19 @@ CREATE TABLE IF NOT EXISTS debts (
   created_by UUID NOT NULL REFERENCES users(id),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Debt repayment history
+CREATE TABLE IF NOT EXISTS debt_repayments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  debt_id UUID NOT NULL REFERENCES debts(id) ON DELETE CASCADE,
+  amount INTEGER NOT NULL CHECK (amount > 0),
+  date DATE NOT NULL DEFAULT CURRENT_DATE,
+  account_id UUID REFERENCES accounts(id),
+  notes TEXT,
+  transaction_id UUID REFERENCES transactions(id),
+  created_by UUID REFERENCES users(id),
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Invitations

@@ -207,7 +207,7 @@ export function HistoryPage() {
                         <p className="font-medium">{getCategoryName(tx.category_id)}</p>
                       </div>
                       <div>
-                        <p className="text-text-muted">Date</p>
+                        <p className="text-text-muted">Transaction date</p>
                         <p className="font-medium">{tx.date}</p>
                       </div>
                       {tx.notes && (
@@ -217,12 +217,12 @@ export function HistoryPage() {
                         </div>
                       )}
                       <div>
-                        <p className="text-text-muted">Created</p>
-                        <p className="font-medium">{tx.created_at}</p>
+                        <p className="text-text-muted">Recorded</p>
+                        <p className="font-medium">{(tx.created_at || '').split('T')[0]}</p>
                       </div>
                       <div>
                         <p className="text-text-muted">Last updated</p>
-                        <p className="font-medium">{tx.updated_at}</p>
+                        <p className="font-medium">{(tx.updated_at || '').split('T')[0]}</p>
                       </div>
                     </div>
                   </div>

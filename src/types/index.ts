@@ -80,6 +80,8 @@ export interface Transaction {
   installment_payment_id?: string
   budget_item_id?: string
   status?: string
+  parent_income_id?: string
+  received_amount?: number
   created_by: string
   created_at: string
   updated_at: string
@@ -212,8 +214,22 @@ export interface SavingsGoal {
   target_date?: string
   status: SavingsGoalStatus
   notes?: string
+  destination_account_id?: string
+  destination_account?: Account
   created_at: string
   updated_at: string
+}
+
+export interface DebtRepayment {
+  id: string
+  debt_id: string
+  amount: number
+  date: string
+  account_id?: string
+  notes?: string
+  transaction_id?: string
+  created_at: string
+  account?: Account
 }
 
 export interface SavingsContribution {

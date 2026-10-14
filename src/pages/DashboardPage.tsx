@@ -87,7 +87,7 @@ export function DashboardPage() {
             .limit(5),
           supabase
             .from('transactions')
-            .select('id, description, amount, type, date, category:categories(name)')
+            .select('id, description, amount, type, date, status, category:categories(name)')
             .eq('household_id', household.id)
             .order('date', { ascending: false })
             .limit(5),
@@ -133,14 +133,17 @@ export function DashboardPage() {
           amount: p.amount,
           due_date: p.due_date || '',
         })),
-        recentTransactions: (transactionRes.data || []).map((t) => ({
-          id: t.id,
-          description: t.description,
-          amount: t.amount,
-          type: t.type,
-          date: t.date,
-          category: (t.category as unknown as { name: string } | null)?.name,
-        })),
+        recentTransactions: (transactionRes.data || [])
+          // Hide expected-income placeholders; only real money movements
+          .filter((t) => !(t.type === 'income' && ['expected', 'partially_received', 'cancelled'].includes(t.status || '')))
+          .map((t) => ({
+            id: t.id,
+            description: t.description,
+            amount: t.amount,
+            type: t.type,
+            date: t.date,
+            category: (t.category as unknown as { name: string } | null)?.name,
+          })),
       })
 
       setLoading(false)

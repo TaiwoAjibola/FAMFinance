@@ -5,6 +5,7 @@ import { HouseholdProvider, useHousehold } from '@/contexts/HouseholdContext'
 import { LoginPage } from '@/pages/LoginPage'
 import { SignUpPage } from '@/pages/SignUpPage'
 import { SetupPage } from '@/pages/SetupPage'
+import { LandingPage } from '@/pages/LandingPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading: authLoading } = useAuth()
@@ -77,7 +78,7 @@ function AppRoutes() {
         <Route path="/login" element={user && !inviteToken ? <Navigate to="/" replace /> : <LoginPage />} />
         <Route path="/signup" element={user && !inviteToken ? <Navigate to="/" replace /> : <SignUpPage />} />
         <Route path="/setup" element={<SetupPage />} />
-        <Route path="/" element={<ProtectedRoute><DashboardPageLazy /></ProtectedRoute>} />
+        <Route path="/" element={user ? <ProtectedRoute><DashboardPageLazy /></ProtectedRoute> : <LandingPage />} />
         <Route path="/accounts" element={<ProtectedRoute><AccountsPageLazy /></ProtectedRoute>} />
         <Route path="/income" element={<ProtectedRoute><IncomePageLazy /></ProtectedRoute>} />
         <Route path="/expenses" element={<ProtectedRoute><ExpensesPageLazy /></ProtectedRoute>} />

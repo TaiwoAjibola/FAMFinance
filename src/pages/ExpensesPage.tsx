@@ -4,7 +4,8 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useHousehold } from '@/contexts/HouseholdContext'
 import { formatCurrency, getCurrentMonth } from '@/lib/utils'
 import { Layout } from '@/components/layout/Layout'
-import { Plus, ArrowUpCircle, Pencil, Trash2, Filter } from 'lucide-react'
+import { Table, Th, Td, TableLoading, TableEmpty } from '@/components/Table'
+import { Plus, ArrowUpCircle, ArrowDownCircle, ArrowRightLeft, Pencil, Trash2, Filter, Receipt } from 'lucide-react'
 import type { Account, Category, Transaction } from '@/types'
 
 export function ExpensesPage() {
@@ -16,7 +17,6 @@ export function ExpensesPage() {
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingTx, setEditingTx] = useState<Transaction | null>(null)
-  const [filterCategory, setFilterCategory] = useState('')
   const [form, setForm] = useState({
     amount: '',
     description: '',
@@ -24,10 +24,12 @@ export function ExpensesPage() {
     category_id: '',
     date: new Date().toISOString().split('T')[0],
     notes: '',
-    type: 'expense' as 'expense' | 'transfer',
+    type: 'expense' as 'expense' | 'transfer' | 'income',
     to_account_id: '',
   })
   const [saving, setSaving] = useState(false)
+  const [filterType, setFilterType] = useState('')
+  const [filterCategory, setFilterCategory] = useState('')
   const currentMonth = getCurrentMonth()
 
   useEffect(() => {
@@ -44,8 +46,8 @@ export function ExpensesPage() {
         .from('transactions')
         .select('*')
         .eq('household_id', household.id)
-        .in('type', ['expense', 'transfer'])
-        .order('date', { ascending: false }),
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false }),
       supabase
         .from('accounts')
         .select('*')
@@ -54,14 +56,62 @@ export function ExpensesPage() {
       supabase
         .from('categories')
         .select('*')
-        .eq('household_id', household.id)
-        .eq('type', 'expense'),
+        .eq('household_id', household.id),
     ])
 
-    setTransactions(txRes.data || [])
+    // Hide expected-income placeholders (they live on the Income page);
+    // every real money movement shows here.
+    const all = (txRes.data || []).filter(
+      (t) => !(t.type === 'income' && ['expected', 'partially_received', 'cancelled'].includes(t.status || ''))
+    )
+    setTransactions(all)
     setAccounts(accountRes.data || [])
     setCategories(catRes.data || [])
     setLoading(false)
+  }
+
+  const typeCategories = categories.filter((c) =>
+    form.type === 'income' ? c.type === 'income' : c.type === 'expense'
+  )
+
+  // Apply a transaction's balance effect. dir=+1 applies, dir=-1 reverses.
+  const applyBalance = async (
+    type: 'expense' | 'transfer' | 'income',
+    amount: number,
+    accountId: string,
+    dir: 1 | -1,
+    toAccountId?: string | null
+  ) => {
+    if (type === 'income') {
+      const { data: acct } = await supabase
+        .from('accounts').select('balance').eq('id', accountId).single()
+      if (acct) {
+        await supabase
+          .from('accounts')
+          .update({ balance: acct.balance + dir * amount })
+          .eq('id', accountId)
+      }
+      return
+    }
+    // Expense (and the "from" side of a transfer): money leaves
+    const { data: from } = await supabase
+      .from('accounts').select('balance').eq('id', accountId).single()
+    if (from) {
+      await supabase
+        .from('accounts')
+        .update({ balance: from.balance - dir * amount })
+        .eq('id', accountId)
+    }
+    if (type === 'transfer' && toAccountId) {
+      const { data: to } = await supabase
+        .from('accounts').select('balance').eq('id', toAccountId).single()
+      if (to) {
+        await supabase
+          .from('accounts')
+          .update({ balance: to.balance + dir * amount })
+          .eq('id', toAccountId)
+      }
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -70,12 +120,20 @@ export function ExpensesPage() {
     setSaving(true)
 
     const amount = parseInt(form.amount) || 0
+    const type = form.type
+
+    if (type === 'transfer' && form.to_account_id === form.account_id) {
+      alert('Choose two different accounts for a transfer')
+      setSaving(false)
+      return
+    }
 
     if (editingTx) {
-      const oldAmount = editingTx.amount
-      const oldAccountId = editingTx.account_id
+      // Reverse the old effect, then apply the new one (handles type changes)
+      await applyBalance(editingTx.type as 'expense' | 'transfer' | 'income', editingTx.amount, editingTx.account_id, -1, editingTx.to_account_id)
+      await applyBalance(type, amount, form.account_id, 1, form.to_account_id || null)
 
-      await supabase
+      const { error: updateErr } = await supabase
         .from('transactions')
         .update({
           amount,
@@ -84,37 +142,29 @@ export function ExpensesPage() {
           category_id: form.category_id || null,
           date: form.date,
           notes: form.notes || null,
-          type: form.type,
-          to_account_id: form.type === 'transfer' ? form.to_account_id : null,
+          type,
+          status: type === 'income' ? 'received' : editingTx.status,
+          to_account_id: type === 'transfer' ? form.to_account_id : null,
         })
         .eq('id', editingTx.id)
 
-      // Adjust account balances (read fresh from DB)
-      if (editingTx.type === 'expense') {
-        const { data: oldAcct } = await supabase
-          .from('accounts').select('balance').eq('id', oldAccountId).single()
-        if (oldAcct) {
-          await supabase
-            .from('accounts').update({ balance: oldAcct.balance + oldAmount }).eq('id', oldAccountId)
-        }
-        const { data: newAcct } = await supabase
-          .from('accounts').select('balance').eq('id', form.account_id).single()
-        if (newAcct) {
-          await supabase
-            .from('accounts').update({ balance: newAcct.balance - amount }).eq('id', form.account_id)
-        }
+      if (updateErr) {
+        alert('Error updating transaction: ' + updateErr.message)
+        setSaving(false)
+        return
       }
     } else {
       const { error: insertErr } = await supabase.from('transactions').insert({
         household_id: household.id,
         account_id: form.account_id,
         category_id: form.category_id || null,
-        type: form.type,
+        type,
         amount,
         description: form.description,
         date: form.date,
         notes: form.notes || null,
-        to_account_id: form.type === 'transfer' ? form.to_account_id : null,
+        status: type === 'income' ? 'received' : 'received',
+        to_account_id: type === 'transfer' ? form.to_account_id : null,
         created_by: user.id,
       })
 
@@ -124,22 +174,7 @@ export function ExpensesPage() {
         return
       }
 
-      // Update account balances (read fresh from DB)
-      const { data: fromAcct } = await supabase
-        .from('accounts').select('balance').eq('id', form.account_id).single()
-      if (fromAcct) {
-        await supabase
-          .from('accounts').update({ balance: fromAcct.balance - amount }).eq('id', form.account_id)
-      }
-
-      if (form.type === 'transfer' && form.to_account_id) {
-        const { data: toAcct } = await supabase
-          .from('accounts').select('balance').eq('id', form.to_account_id).single()
-        if (toAcct) {
-          await supabase
-            .from('accounts').update({ balance: toAcct.balance + amount }).eq('id', form.to_account_id)
-        }
-      }
+      await applyBalance(type, amount, form.account_id, 1, form.to_account_id || null)
     }
 
     setForm({ amount: '', description: '', account_id: '', category_id: '', date: new Date().toISOString().split('T')[0], notes: '', type: 'expense', to_account_id: '' })
@@ -158,56 +193,84 @@ export function ExpensesPage() {
       category_id: tx.category_id || '',
       date: tx.date,
       notes: tx.notes || '',
-      type: tx.type as 'expense' | 'transfer',
+      type: tx.type as 'expense' | 'transfer' | 'income',
       to_account_id: tx.to_account_id || '',
     })
     setShowForm(true)
   }
 
   const handleDelete = async (tx: Transaction) => {
-    if (!confirm('Are you sure you want to delete this transaction?')) return
+    if (!confirm('Delete this transaction? Account balances will be adjusted back.')) return
 
-    await supabase.from('transactions').delete().eq('id', tx.id)
-
-    // Reverse balance (read fresh from DB)
-    const { data: acct } = await supabase
-      .from('accounts').select('balance').eq('id', tx.account_id).single()
-    if (acct) {
-      await supabase
-        .from('accounts')
-        .update({ balance: acct.balance + tx.amount })
-        .eq('id', tx.account_id)
-    }
-
-    if (tx.type === 'transfer' && tx.to_account_id) {
-      const { data: toAcct } = await supabase
-        .from('accounts').select('balance').eq('id', tx.to_account_id).single()
-      if (toAcct) {
+    // Receipt linked to an expected income? Reverse the parent's progress too.
+    if (tx.parent_income_id) {
+      const { data: parent } = await supabase
+        .from('transactions').select('received_amount, status').eq('id', tx.parent_income_id).single()
+      if (parent) {
+        const newReceived = Math.max(0, (parent.received_amount || 0) - tx.amount)
+        const newStatus = newReceived <= 0 ? 'expected' : 'partially_received'
         await supabase
-          .from('accounts')
-          .update({ balance: toAcct.balance - tx.amount })
-          .eq('id', tx.to_account_id)
+          .from('transactions')
+          .update({ received_amount: newReceived, status: newStatus })
+          .eq('id', tx.parent_income_id)
       }
     }
 
+    const { error } = await supabase.from('transactions').delete().eq('id', tx.id)
+    if (error) {
+      alert('Error deleting: ' + error.message)
+      return
+    }
+    await applyBalance(tx.type as 'expense' | 'transfer' | 'income', tx.amount, tx.account_id, -1, tx.to_account_id)
     await fetchData()
   }
 
-  const filtered = filterCategory
-    ? transactions.filter((t) => t.category_id === filterCategory)
-    : transactions
+  const filtered = transactions.filter((t) => {
+    if (filterType && t.type !== filterType) return false
+    if (filterCategory && t.category_id !== filterCategory) return false
+    return true
+  })
 
-  const totalExpenses = transactions
+  const incomeThisMonth = transactions
+    .filter((t) => t.type === 'income' && t.date.startsWith(currentMonth))
+    .reduce((sum, t) => sum + t.amount, 0)
+  const expensesThisMonth = transactions
     .filter((t) => t.type === 'expense' && t.date.startsWith(currentMonth))
     .reduce((sum, t) => sum + t.amount, 0)
+
+  const getTypeIcon = (type: string) => {
+    switch (type) {
+      case 'income': return <ArrowDownCircle className="h-4 w-4 text-success" />
+      case 'expense': return <ArrowUpCircle className="h-4 w-4 text-danger" />
+      case 'transfer': return <ArrowRightLeft className="h-4 w-4 text-cta" />
+      default: return <ArrowRightLeft className="h-4 w-4 text-text-muted" />
+    }
+  }
+
+  const getTypeBadge = (type: string) => {
+    const styles: Record<string, string> = {
+      income: 'bg-success/10 text-success',
+      expense: 'bg-danger/10 text-danger',
+      transfer: 'bg-cta/10 text-cta',
+    }
+    return (
+      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium capitalize ${styles[type] || 'bg-surface-alt text-text-muted'}`}>
+        {getTypeIcon(type)}{type}
+      </span>
+    )
+  }
+
+  const getAccountName = (id: string) => accounts.find((a) => a.id === id)?.name || '—'
+  const getCategoryName = (id?: string | null) => categories.find((c) => c.id === id)?.name || '—'
+  const recordedDate = (tx: Transaction) => (tx.created_at || '').split('T')[0] || '—'
 
   return (
     <Layout>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-text">Expenses & Transfers</h1>
-            <p className="text-sm text-text-muted">Record expenses and manage transfers</p>
+            <h1 className="text-2xl font-bold text-text">Transactions</h1>
+            <p className="text-sm text-text-muted">Record income, expenses and transfers</p>
           </div>
           <button
             onClick={() => { setShowForm(true); setEditingTx(null); setForm({ amount: '', description: '', account_id: '', category_id: '', date: new Date().toISOString().split('T')[0], notes: '', type: 'expense', to_account_id: '' }) }}
@@ -219,10 +282,17 @@ export function ExpensesPage() {
         </div>
 
         {/* Summary */}
-        <div className="stat-card">
-          <ArrowUpCircle className="h-5 w-5 text-danger" />
-          <p className="stat-value text-danger">{formatCurrency(totalExpenses)}</p>
-          <p className="stat-label">Total expenses this month</p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="stat-card">
+            <ArrowDownCircle className="h-5 w-5 text-success" />
+            <p className="stat-value text-success">{formatCurrency(incomeThisMonth)}</p>
+            <p className="stat-label">Income received this month</p>
+          </div>
+          <div className="stat-card">
+            <ArrowUpCircle className="h-5 w-5 text-danger" />
+            <p className="stat-value text-danger">{formatCurrency(expensesThisMonth)}</p>
+            <p className="stat-label">Expenses this month</p>
+          </div>
         </div>
 
         {/* Form */}
@@ -233,10 +303,23 @@ export function ExpensesPage() {
             </h3>
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* Transaction type toggle */}
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2" role="tablist">
                 <button
                   type="button"
-                  onClick={() => setForm({ ...form, type: 'expense' })}
+                  role="tab"
+                  aria-selected={form.type === 'income'}
+                  onClick={() => setForm({ ...form, type: 'income', to_account_id: '' })}
+                  className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors cursor-pointer ${
+                    form.type === 'income' ? 'bg-success text-white' : 'bg-surface-alt text-text-muted hover:bg-border'
+                  }`}
+                >
+                  Income
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={form.type === 'expense'}
+                  onClick={() => setForm({ ...form, type: 'expense', to_account_id: '' })}
                   className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors cursor-pointer ${
                     form.type === 'expense' ? 'bg-danger text-white' : 'bg-surface-alt text-text-muted hover:bg-border'
                   }`}
@@ -245,6 +328,8 @@ export function ExpensesPage() {
                 </button>
                 <button
                   type="button"
+                  role="tab"
+                  aria-selected={form.type === 'transfer'}
                   onClick={() => setForm({ ...form, type: 'transfer' })}
                   className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors cursor-pointer ${
                     form.type === 'transfer' ? 'bg-cta text-white' : 'bg-surface-alt text-text-muted hover:bg-border'
@@ -275,12 +360,14 @@ export function ExpensesPage() {
                     value={form.description}
                     onChange={(e) => setForm({ ...form, description: e.target.value })}
                     className="input-field"
-                    placeholder="e.g. Internet payment"
+                    placeholder="e.g. Monthly salary, Internet payment"
                     required
                   />
                 </div>
                 <div>
-                  <label htmlFor="account" className="label">From account</label>
+                  <label htmlFor="account" className="label">
+                    {form.type === 'income' ? 'Into account' : 'From account'}
+                  </label>
                   <select
                     id="account"
                     value={form.account_id}
@@ -306,7 +393,7 @@ export function ExpensesPage() {
                     >
                       <option value="">Select account</option>
                       {accounts.filter((a) => a.id !== form.account_id).map((a) => (
-                        <option key={a.id} value={a.id}>{a.name}</option>
+                        <option key={a.id} value={a.id}>{a.name} ({formatCurrency(a.balance)})</option>
                       ))}
                     </select>
                   </div>
@@ -320,14 +407,14 @@ export function ExpensesPage() {
                       className="input-field"
                     >
                       <option value="">Select category</option>
-                      {categories.map((c) => (
+                      {typeCategories.map((c) => (
                         <option key={c.id} value={c.id}>{c.name}</option>
                       ))}
                     </select>
                   </div>
                 )}
                 <div>
-                  <label htmlFor="date" className="label">Date</label>
+                  <label htmlFor="date" className="label">Transaction date</label>
                   <input
                     id="date"
                     type="date"
@@ -336,6 +423,7 @@ export function ExpensesPage() {
                     className="input-field"
                     required
                   />
+                  <p className="mt-1 text-xs text-text-muted">When the money actually moved.</p>
                 </div>
                 <div>
                   <label htmlFor="notes" className="label">Notes (optional)</label>
@@ -361,13 +449,25 @@ export function ExpensesPage() {
           </div>
         )}
 
-        {/* Filter */}
-        <div className="flex items-center gap-2">
+        {/* Filters */}
+        <div className="flex flex-wrap items-center gap-2">
           <Filter className="h-4 w-4 text-text-muted" />
+          <select
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value)}
+            className="input-field w-auto"
+            aria-label="Filter by type"
+          >
+            <option value="">All types</option>
+            <option value="income">Income</option>
+            <option value="expense">Expenses</option>
+            <option value="transfer">Transfers</option>
+          </select>
           <select
             value={filterCategory}
             onChange={(e) => setFilterCategory(e.target.value)}
             className="input-field w-auto"
+            aria-label="Filter by category"
           >
             <option value="">All categories</option>
             {categories.map((c) => (
@@ -376,54 +476,74 @@ export function ExpensesPage() {
           </select>
         </div>
 
-        {/* Transaction list */}
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-cta border-t-transparent" />
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="card py-12 text-center">
-            <ArrowUpCircle className="mx-auto h-10 w-10 text-text-light" />
-            <p className="mt-3 text-sm text-text-muted">No transactions yet</p>
-            <button onClick={() => setShowForm(true)} className="btn-primary mt-4">
-              <Plus className="h-4 w-4" />
-              Record your first expense
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {filtered.map((tx) => (
-              <div key={tx.id} className="card-hover group flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${
-                    tx.type === 'expense' ? 'bg-danger/10' : 'bg-cta/10'
-                  }`}>
-                    <ArrowUpCircle className={`h-5 w-5 ${tx.type === 'expense' ? 'text-danger' : 'text-cta'}`} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-text">{tx.description}</p>
-                    <p className="text-xs text-text-muted">{tx.date} {tx.notes && `• ${tx.notes}`}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className={`text-sm font-semibold ${
-                    tx.type === 'expense' ? 'text-danger' : 'text-cta'
-                  }`}>
-                    {tx.type === 'expense' ? '-' : ''}{formatCurrency(tx.amount)}
-                  </span>
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => handleEdit(tx)} className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer">
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    <button onClick={() => handleDelete(tx)} className="rounded-lg p-1.5 text-danger hover:bg-danger/5 cursor-pointer">
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        {/* Transaction table */}
+        <Table>
+          <thead>
+            <tr>
+              <Th>Description</Th>
+              <Th>Type</Th>
+              <Th>Category</Th>
+              <Th>Account</Th>
+              <Th align="right">Amount</Th>
+              <Th>Transaction date</Th>
+              <Th>Recorded</Th>
+              <Th align="right">Actions</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <TableLoading colSpan={8} />
+            ) : filtered.length === 0 ? (
+              <TableEmpty
+                colSpan={8}
+                icon={Receipt}
+                title={transactions.length === 0 ? 'No transactions yet' : 'No matching transactions'}
+                action={
+                  <button onClick={() => setShowForm(true)} className="btn-primary mt-4">
+                    <Plus className="h-4 w-4" />
+                    Record your first transaction
+                  </button>
+                }
+              />
+            ) : (
+              filtered.map((tx) => (
+                <tr key={tx.id} className="border-b border-border last:border-0 hover:bg-surface-alt/50">
+                  <Td>
+                    <p className="font-medium">{tx.description}</p>
+                    {tx.notes && <p className="text-xs text-text-muted">{tx.notes}</p>}
+                  </Td>
+                  <Td>{getTypeBadge(tx.type)}</Td>
+                  <Td className="text-text-muted">{getCategoryName(tx.category_id)}</Td>
+                  <Td className="text-text-muted">
+                    {tx.type === 'transfer'
+                      ? `${getAccountName(tx.account_id)} → ${getAccountName(tx.to_account_id || '')}`
+                      : getAccountName(tx.account_id)}
+                  </Td>
+                  <Td align="right">
+                    <span className={`font-semibold ${
+                      tx.type === 'income' ? 'text-success' : tx.type === 'expense' ? 'text-danger' : 'text-cta'
+                    }`}>
+                      {tx.type === 'income' ? '+' : tx.type === 'expense' ? '−' : ''}
+                      {formatCurrency(tx.amount)}
+                    </span>
+                  </Td>
+                  <Td className="text-text-muted">{tx.date}</Td>
+                  <Td className="text-text-muted">{recordedDate(tx)}</Td>
+                  <Td align="right">
+                    <div className="flex justify-end gap-1">
+                      <button onClick={() => handleEdit(tx)} className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer" title="Edit">
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button onClick={() => handleDelete(tx)} className="rounded-lg p-1.5 text-danger hover:bg-danger/5 cursor-pointer" title="Delete">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </Td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </Table>
       </div>
     </Layout>
   )
