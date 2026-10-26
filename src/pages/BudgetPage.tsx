@@ -7,6 +7,7 @@ import { formatCurrency, getCurrentMonth, getMonthLabel, previousMonth, nextMont
 import { Layout } from '@/components/layout/Layout'
 import { Table, Th, Td } from '@/components/Table'
 import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Check, X, Repeat, Tag, Settings, Wallet, History } from 'lucide-react'
+import { IconButton } from '@/components/ui/IconButton'
 import type { Category, BudgetItem, MonthlyBudget, Account, BudgetPayment } from '@/types'
 
 export function BudgetPage() {
@@ -490,15 +491,15 @@ export function BudgetPage() {
                       {editingCategory === cat.id ? (
                         <div className="flex items-center gap-2 flex-1">
                           <input type="text" value={catForm.name} onChange={(e) => setCatForm({ name: e.target.value })} className="input-field flex-1 text-sm" onKeyDown={(e) => e.key === 'Enter' && handleUpdateCategory(cat.id)} autoFocus />
-                          <button onClick={() => handleUpdateCategory(cat.id)} disabled={catSaving} className="rounded-lg p-1.5 text-success hover:bg-success/5 cursor-pointer"><Check className="h-4 w-4" /></button>
-                          <button onClick={() => setEditingCategory(null)} className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer"><X className="h-4 w-4" /></button>
+                          <IconButton icon={Check} label="Save category" disabled={catSaving} variant="success" onClick={() => handleUpdateCategory(cat.id)} />
+                          <IconButton icon={X} label="Cancel" onClick={() => setEditingCategory(null)} />
                         </div>
                       ) : (
                         <>
                           <span className="text-sm text-text">{cat.name}</span>
                           <div className="flex gap-1">
-                            <button onClick={() => { setEditingCategory(cat.id); setCatForm({ name: cat.name }) }} className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer"><Pencil className="h-3.5 w-3.5" /></button>
-                            <button onClick={() => handleDeleteCategory(cat.id)} className="rounded-lg p-1.5 text-danger hover:bg-danger/5 cursor-pointer"><Trash2 className="h-3.5 w-3.5" /></button>
+                            <IconButton icon={Pencil} label="Edit category" onClick={() => { setEditingCategory(cat.id); setCatForm({ name: cat.name }) }} />
+                            <IconButton icon={Trash2} label="Delete category" variant="danger" onClick={() => handleDeleteCategory(cat.id)} />
                           </div>
                         </>
                       )}
@@ -609,7 +610,7 @@ export function BudgetPage() {
                     <Th align="right">Actual spending</Th>
                     <Th align="right">Remaining</Th>
                     <Th align="right">% used</Th>
-                    <Th align="right">Actions</Th>
+                    <Th align="right" sticky>Actions</Th>
                   </tr>
                 </thead>
                 <tbody>
@@ -634,7 +635,12 @@ export function BudgetPage() {
                             <Td>
                               <div className="flex flex-wrap items-center gap-2">
                                 <span className="font-medium">{getItemName(item)}</span>
-                                {item.is_recurring && <span title="Recurring"><Repeat className="h-3 w-3 text-accent" /></span>}
+                                {item.is_recurring && (
+                                  <span className="inline-flex items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
+                                    <Repeat className="h-3.5 w-3.5" />
+                                    Recurring
+                                  </span>
+                                )}
                                 {!item.category_id && item.custom_name && <span className="rounded bg-surface-alt px-1.5 py-0.5 text-[10px] text-text-muted">Custom</span>}
                                 {isFullyPaid && <span className="rounded bg-success/10 px-1.5 py-0.5 text-[10px] font-medium text-success">Paid</span>}
                               </div>
@@ -673,24 +679,33 @@ export function BudgetPage() {
                                 </span>
                               </div>
                             </Td>
-                            <Td align="right">
+                            <Td align="right" sticky>
                               {isEditing ? (
                                 <div className="flex justify-end gap-1">
-                                  <button onClick={() => handleUpdateItem(item.id)} disabled={saving} className="rounded-lg p-1.5 text-success hover:bg-success/5 cursor-pointer" title="Save"><Check className="h-4 w-4" /></button>
-                                  <button onClick={() => setEditingItem(null)} className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer" title="Cancel"><X className="h-4 w-4" /></button>
+                                  <IconButton icon={Check} label="Save" disabled={saving} variant="success" onClick={() => handleUpdateItem(item.id)} />
+                                  <IconButton icon={X} label="Cancel" onClick={() => setEditingItem(null)} />
                                 </div>
                               ) : (
-                                <div className="flex justify-end gap-1">
+                                <div className="row-actions">
                                   {!isFullyPaid && (
-                                    <button onClick={() => { setPayingItem(item.id); setPayForm({ amount: '', date: new Date().toISOString().split('T')[0], account_id: '', notes: '' }) }} className="rounded-lg bg-cta/10 px-2 py-1 text-xs font-medium text-cta hover:bg-cta/20 cursor-pointer">
-                                      <Wallet className="inline h-3 w-3 mr-1" />Pay
+                                    <button
+                                      onClick={() => { setPayingItem(item.id); setPayForm({ amount: '', date: new Date().toISOString().split('T')[0], account_id: '', notes: '' }) }}
+                                      className="inline-flex min-h-9 items-center gap-1 rounded-lg bg-cta/10 px-2.5 py-1.5 text-xs font-medium text-cta hover:bg-cta/20 cursor-pointer"
+                                    >
+                                      <Wallet className="h-4 w-4" />Pay
                                     </button>
                                   )}
-                                  <button onClick={() => setShowPayments(showPayments === item.id ? null : item.id)} className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer" title="Payment history">
-                                    <History className="h-3.5 w-3.5" />
-                                  </button>
-                                  <button onClick={() => { setEditingItem(item.id); setEditForm({ budgeted_amount: String(item.budgeted_amount), is_recurring: item.is_recurring }) }} className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer" title="Edit"><Pencil className="h-3.5 w-3.5" /></button>
-                                  <button onClick={() => handleDeleteItem(item.id)} className="rounded-lg p-1.5 text-danger hover:bg-danger/5 cursor-pointer" title="Delete"><Trash2 className="h-3.5 w-3.5" /></button>
+                                  <IconButton
+                                    icon={History}
+                                    label="Payment history"
+                                    onClick={() => setShowPayments(showPayments === item.id ? null : item.id)}
+                                  />
+                                  <IconButton
+                                    icon={Pencil}
+                                    label="Edit"
+                                    onClick={() => { setEditingItem(item.id); setEditForm({ budgeted_amount: String(item.budgeted_amount), is_recurring: item.is_recurring }) }}
+                                  />
+                                  <IconButton icon={Trash2} label="Delete" variant="danger" onClick={() => handleDeleteItem(item.id)} />
                                 </div>
                               )}
                             </Td>
@@ -712,13 +727,14 @@ export function BudgetPage() {
                                           {(p.account as any)?.name ? ` from ${(p.account as any).name}` : ''}
                                           {p.notes ? ` • ${p.notes}` : ''}
                                         </span>
-                                        <button
+                                        <IconButton
+                                          icon={Trash2}
+                                          label="Revert this payment"
+                                          variant="danger"
+                                          size="md"
+                                          className="h-8 w-8"
                                           onClick={() => handleRevertPayment(p, item)}
-                                          className="rounded p-1 text-danger hover:bg-danger/5 cursor-pointer"
-                                          title="Revert this payment"
-                                        >
-                                          <Trash2 className="h-3 w-3" />
-                                        </button>
+                                        />
                                       </div>
                                     ))}
                                   </div>

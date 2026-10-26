@@ -1,17 +1,20 @@
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import { DEFAULT_CURRENCY, formatCurrency as formatWithCurrency } from './currency'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-NG', {
-    style: 'currency',
-    currency: 'NGN',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount)
+/**
+ * Currency-aware money formatter.
+ *
+ * Single-argument calls keep the historical NGN behaviour so every existing
+ * call site renders exactly as before. Pass a currency code to render an
+ * account/transaction in its own currency.
+ */
+export function formatCurrency(amount: number, currency: string = DEFAULT_CURRENCY): string {
+  return formatWithCurrency(amount, currency)
 }
 
 export function formatNumber(amount: number): string {

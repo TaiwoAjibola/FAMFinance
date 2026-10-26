@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useHousehold } from '@/contexts/HouseholdContext'
 import { formatCurrency, getCurrentMonth } from '@/lib/utils'
 import { Layout } from '@/components/layout/Layout'
+import { IconButton } from '@/components/ui/IconButton'
 import { Plus, Target, Clock, CheckCircle, AlertCircle, Pencil, Trash2, Wallet } from 'lucide-react'
 import type { PlannedExpense, InstallmentPlan, Account } from '@/types'
 
@@ -293,25 +294,21 @@ export function PlannedExpensesPage() {
                     <span className={PRIORITY_COLORS[expense.priority]}>
                       {expense.priority}
                     </span>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="row-actions">
                       {expense.status !== 'paid' && expense.status !== 'cancelled' && (
                         <button
                           onClick={() => {
                             setPayingExpense(expense)
                             setPayForm({ amount: String(expense.amount), account_id: '', date: new Date().toISOString().split('T')[0] })
                           }}
-                          className="rounded-lg bg-cta/10 px-2 py-1 text-xs font-medium text-cta hover:bg-cta/20 cursor-pointer"
+                          className="inline-flex min-h-9 items-center gap-1 rounded-lg bg-cta/10 px-2.5 py-1.5 text-xs font-medium text-cta hover:bg-cta/20 cursor-pointer"
                           title="Pay this planned expense"
                         >
-                          <Wallet className="inline h-3 w-3 mr-1" />Pay
+                          <Wallet className="h-4 w-4" />Pay
                         </button>
                       )}
-                      <button onClick={() => handleEdit(expense)} className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer">
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button onClick={() => handleDelete(expense.id)} className="rounded-lg p-1.5 text-danger hover:bg-danger/5 cursor-pointer">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      <IconButton icon={Pencil} label="Edit planned expense" onClick={() => handleEdit(expense)} />
+                      <IconButton icon={Trash2} label="Delete planned expense" variant="danger" onClick={() => handleDelete(expense.id)} />
                     </div>
                   </div>
                 </div>

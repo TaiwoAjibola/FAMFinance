@@ -5,6 +5,7 @@ import { useHousehold } from '@/contexts/HouseholdContext'
 import { formatCurrency, getCurrentMonth } from '@/lib/utils'
 import { Layout } from '@/components/layout/Layout'
 import { Table, Th, Td, TableLoading, TableEmpty } from '@/components/Table'
+import { IconButton } from '@/components/ui/IconButton'
 import { Plus, ArrowUpCircle, ArrowDownCircle, ArrowRightLeft, Pencil, Trash2, Filter, Receipt } from 'lucide-react'
 import type { Account, Category, Transaction } from '@/types'
 
@@ -487,7 +488,7 @@ export function ExpensesPage() {
               <Th align="right">Amount</Th>
               <Th>Transaction date</Th>
               <Th>Recorded</Th>
-              <Th align="right">Actions</Th>
+              <Th align="right" sticky>Actions</Th>
             </tr>
           </thead>
           <tbody>
@@ -529,14 +530,10 @@ export function ExpensesPage() {
                   </Td>
                   <Td className="text-text-muted">{tx.date}</Td>
                   <Td className="text-text-muted">{recordedDate(tx)}</Td>
-                  <Td align="right">
-                    <div className="flex justify-end gap-1">
-                      <button onClick={() => handleEdit(tx)} className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer" title="Edit">
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button onClick={() => handleDelete(tx)} className="rounded-lg p-1.5 text-danger hover:bg-danger/5 cursor-pointer" title="Delete">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                  <Td align="right" sticky>
+                    <div className="row-actions justify-end">
+                      <IconButton icon={Pencil} label="Edit transaction" onClick={() => handleEdit(tx)} />
+                      <IconButton icon={Trash2} label="Delete transaction" variant="danger" onClick={() => handleDelete(tx)} />
                     </div>
                   </Td>
                 </tr>

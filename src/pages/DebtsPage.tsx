@@ -1,212 +1,232 @@
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { useHousehold } from '@/contexts/HouseholdContext'
-import { formatCurrency } from '@/lib/utils'
 import { Layout } from '@/components/layout/Layout'
-import { Plus, HandCoins, Pencil, Trash2, Check, Wallet, History } from 'lucide-react'
-import type { Debt, Account, DebtRepayment } from '@/types'
+import { IconButton } from '@/components/ui/IconButton'
+import { Modal } from '@/components/ui/Modal'
+import { DebtDetailModal } from '@/components/debts/DebtDetailModal'
+import {
+  DebtForm,
+  EMPTY_DEBT_FORM,
+  debtFormFrom,
+  parseDebtForm,
+  type DebtFormValues,
+} from '@/components/debts/DebtForm'
+import { DEFAULT_CURRENCY, formatCurrency, groupByCurrency } from '@/lib/currency'
+import { summariseDebt, todayIso, totalRepaid } from '@/lib/debtSchedule'
+import { replacePendingInstallments, resyncFromDatabase } from '@/lib/debtSync'
+import { applyTransactionEffect } from '@/lib/transactions'
+import { Plus, HandCoins, Check, CalendarClock, Pencil, Trash2 } from 'lucide-react'
+import type { Account, Debt, DebtRepayment } from '@/types'
 
 export function DebtsPage() {
   const { user } = useAuth()
   const { household } = useHousehold()
+  const [searchParams, setSearchParams] = useSearchParams()
+
   const [debts, setDebts] = useState<Debt[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [repayments, setRepayments] = useState<DebtRepayment[]>([])
   const [loading, setLoading] = useState(true)
+
   const [showForm, setShowForm] = useState(false)
   const [editingDebt, setEditingDebt] = useState<Debt | null>(null)
-  const [form, setForm] = useState({
-    lender_name: '',
-    amount: '',
-    date_borrowed: new Date().toISOString().split('T')[0],
-    due_date: '',
-    notes: '',
-  })
+  const [formValues, setFormValues] = useState<DebtFormValues>(EMPTY_DEBT_FORM)
+  const [detailDebtId, setDetailDebtId] = useState<string | null>(null)
+
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  // Repay state
-  const [repayingDebt, setRepayingDebt] = useState<Debt | null>(null)
-  const [repayForm, setRepayForm] = useState({ amount: '', account_id: '', date: new Date().toISOString().split('T')[0], notes: '' })
-  const [repaying, setRepaying] = useState(false)
-
-  // Repayment history viewer
-  const [showHistoryFor, setShowHistoryFor] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!household) return
-    fetchData()
-  }, [household])
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     if (!household) return
     setLoading(true)
 
     const [debtRes, accountRes, repayRes] = await Promise.all([
-      supabase
-        .from('debts')
-        .select('*')
-        .eq('household_id', household.id)
-        .order('date_borrowed', { ascending: false }),
-      supabase
-        .from('accounts')
-        .select('*')
-        .eq('household_id', household.id)
-        .eq('is_active', true),
+      supabase.from('debts').select('*').eq('household_id', household.id).order ('date_borrowed', { ascending: false }),
+      supabase.from('accounts').select('*').eq('household_id', household.id).eq('is_active', true),
       supabase
         .from('debt_repayments')
-        .select('*, account:accounts(name)')
-        .order('date', { ascending: false }),
+        .select('*, account:accounts(id, name, currency)')
+        .order('installment_number', { ascending: true }),
     ])
 
-    setDebts(debtRes.data || [])
-    setAccounts(accountRes.data || [])
-    // Only repayments that belong to this household's debts
-    const debtIds = new Set((debtRes.data || []).map((d) => d.id))
-    setRepayments((repayRes.data || []).filter((r) => debtIds.has(r.debt_id)))
+    const rows = (debtRes.data || []) as Debt[]
+    setDebts(rows)
+    setAccounts((accountRes.data || []) as Account[])
+
+    // Scope repayments to this household's debts — RLS already does this, this is
+    // just defence in depth for the client-side grouping below.
+    const debtIds = new Set(rows.map((d) => d.id))
+    setRepayments(((repayRes.data || []) as DebtRepayment[]).filter((r) => debtIds.has(r.debt_id)))
     setLoading(false)
-  }
+  }, [household])
 
-  // Add/edit debt
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!household || !user) return
-    setSaving(true)
+  useEffect(() => {
+    if (!household) return
+    void fetchData()
+  }, [household, fetchData])
 
-    const amount = parseInt(form.amount) || 0
+  // Deep link from the quick actions: /debts?new=1 opens the create form.
+  useEffect(() => {
+    if (searchParams.get('new') !== '1') return
+    openAddForm()
+    searchParams.delete('new')
+    setSearchParams(searchParams, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
-    if (editingDebt) {
-      const { error } = await supabase
-        .from('debts')
-        .update({
-          lender_name: form.lender_name,
-          amount,
-          date_borrowed: form.date_borrowed,
-          due_date: form.due_date || null,
-          notes: form.notes || null,
-        })
-        .eq('id', editingDebt.id)
-
-      if (error) alert('Error: ' + error.message)
-    } else {
-      const { error } = await supabase.from('debts').insert({
-        household_id: household.id,
-        lender_name: form.lender_name,
-        amount,
-        date_borrowed: form.date_borrowed,
-        due_date: form.due_date || null,
-        notes: form.notes || null,
-        created_by: user.id,
-      })
-
-      if (error) {
-        alert('Error: ' + error.message)
-        setSaving(false)
-        return
-      }
+  const summaries = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof summariseDebt>>()
+    for (const debt of debts) {
+      map.set(debt.id, summariseDebt(debt, repayments.filter((r) => r.debt_id === debt.id)))
     }
+    return map
+  }, [debts, repayments])
 
-    setForm({ lender_name: '', amount: '', date_borrowed: new Date().toISOString().split('T')[0], due_date: '', notes: '' })
-    setShowForm(false)
-    setEditingDebt(null)
-    await fetchData()
-    setSaving(false)
-  }
+  const outstandingTotals = useMemo(
+    () =>
+      groupByCurrency(debts, (d) => ({ amount: summaries.get(d.id)?.outstanding ?? 0, currency: d.currency })),
+    [debts, summaries]
+  )
+  const repaidTotals = useMemo(
+    () =>
+      groupByCurrency(debts, (d) => ({
+        amount: totalRepaid(repayments.filter((r) => r.debt_id === d.id)),
+        currency: d.currency,
+      })),
+    [debts, repayments]
+  )
 
-  const handleEdit = (debt: Debt) => {
-    setEditingDebt(debt)
-    setForm({
-      lender_name: debt.lender_name,
-      amount: String(debt.amount),
-      date_borrowed: debt.date_borrowed,
-      due_date: debt.due_date || '',
-      notes: debt.notes || '',
+  const detailDebt = detailDebtId ? debts.find((d) => d.id === detailDebtId) ?? null : null
+
+  function openAddForm() {
+    setFormValues({
+      ...EMPTY_DEBT_FORM,
+      date_borrowed: todayIso(),
+      first_payment_date: todayIso(),
+      currency: household?.currency || DEFAULT_CURRENCY,
     })
+    setEditingDebt(null)
+    setError(null)
+    setDetailDebtId(null)
     setShowForm(true)
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this debt record?')) return
-    await supabase.from('debts').delete().eq('id', id)
-    await fetchData()
+  function openEditForm(debt: Debt) {
+    setFormValues(debtFormFrom(debt))
+    setEditingDebt(debt)
+    setError(null)
+    setDetailDebtId(null)
+    setShowForm(true)
   }
 
-  // Repay debt
-  const handleRepay = async () => {
-    if (!repayingDebt || !repayForm.amount || !repayForm.account_id) return
-    const amount = parseInt(repayForm.amount) || 0
-    if (amount <= 0) return
+  async function handleSubmit() {
+    if (!household || !user) return
+    const parsed = parseDebtForm(formValues)
 
-    const remaining = repayingDebt.amount - repayingDebt.amount_repaid
-    if (amount > remaining) {
-      alert(`Cannot repay more than the remaining ₦${remaining.toLocaleString()}`)
+    if (!parsed.lender_name) {
+      setError('Give the debt a name or say who you owe.')
+      return
+    }
+    if (parsed.amount <= 0) {
+      setError('Enter an amount greater than zero.')
       return
     }
 
-    setRepaying(true)
+    setSaving(true)
+    setError(null)
 
-    // 1. Create expense transaction
-    const { data: txn, error: txnErr } = await supabase
-      .from('transactions')
-      .insert({
-        household_id: household!.id,
-        account_id: repayForm.account_id,
-        type: 'expense',
-        amount,
-        description: `Debt repayment to ${repayingDebt.lender_name}`,
-        date: repayForm.date,
-        notes: repayForm.notes || null,
-        created_by: user!.id,
-      })
-      .select()
-      .single()
-
-    if (txnErr) {
-      alert('Error creating transaction: ' + txnErr.message)
-      setRepaying(false)
-      return
+    const fields = {
+      lender_name: parsed.lender_name,
+      amount: parsed.amount,
+      currency: parsed.currency,
+      date_borrowed: parsed.date_borrowed,
+      due_date: parsed.due_date,
+      notes: parsed.notes,
+      interest_rate: parsed.interest_rate,
+      repayment_frequency: parsed.repayment_frequency,
+      installment_amount: parsed.installment_amount,
+      num_installments: parsed.num_installments,
+      first_payment_date: parsed.first_payment_date,
     }
 
-    // 2. Deduct from account
-    const { data: acct } = await supabase
-      .from('accounts').select('balance').eq('id', repayForm.account_id).single()
-    if (acct) {
-      await supabase
-        .from('accounts')
-        .update({ balance: acct.balance - amount })
-        .eq('id', repayForm.account_id)
+    if (editingDebt) {
+      const { error: updateError } = await supabase.from('debts').update(fields).eq('id', editingDebt.id)
+      if (updateError) {
+        setSaving(false)
+        setError(updateError.message)
+        return
+      }
+
+      // Only the forward-looking plan is replaced; paid history is preserved.
+      await replacePendingInstallments(editingDebt.id, user.id, parsed.schedule)
+      await resyncFromDatabase({ ...editingDebt, ...fields })
+    } else {
+      const { data: created, error: insertError } = await supabase
+        .from('debts')
+        .insert({ ...fields, household_id: household.id, created_by: user.id })
+        .select()
+        .single()
+
+      if (insertError || !created) {
+        setSaving(false)
+        setError(insertError?.message ?? 'Could not save the debt.')
+        return
+      }
+
+      if (parsed.schedule.length > 0) {
+        await replacePendingInstallments(created.id, user.id, parsed.schedule)
+      }
     }
 
-    // 3. Record repayment history
-    await supabase.from('debt_repayments').insert({
-      debt_id: repayingDebt.id,
-      amount,
-      date: repayForm.date,
-      account_id: repayForm.account_id,
-      notes: repayForm.notes || null,
-      transaction_id: txn?.id || null,
-      created_by: user!.id,
-    })
-
-    // 4. Update debt
-    const newRepaid = repayingDebt.amount_repaid + amount
-    const newStatus = newRepaid >= repayingDebt.amount ? 'fully_paid' : 'active'
-    await supabase
-      .from('debts')
-      .update({ amount_repaid: newRepaid, status: newStatus })
-      .eq('id', repayingDebt.id)
-
-    setRepayingDebt(null)
-    setRepayForm({ amount: '', account_id: '', date: new Date().toISOString().split('T')[0], notes: '' })
-    setRepaying(false)
+    setSaving(false)
+    setShowForm(false)
+    setEditingDebt(null)
     await fetchData()
   }
 
-  const activeDebts = debts.filter((d) => d.status === 'active')
-  const totalOwed = activeDebts.reduce((sum, d) => sum + (d.amount - d.amount_repaid), 0)
-  const paidThisMonth = debts
-    .filter((d) => d.status === 'fully_paid' || d.amount_repaid > 0)
-    .reduce((sum, d) => sum + d.amount_repaid, 0)
+  /**
+   * Deletes a debt and unwinds everything it created: each repayment's linked
+   * transaction is removed and its balance effect reversed, so no orphan expense
+   * is left behind.
+   */
+  async function handleDelete(debt: Debt) {
+    if (!confirm(`Delete "${debt.lender_name}" and all of its repayment history?`)) return
+
+    const { data: rows } = await supabase
+      .from('debt_repayments')
+      .select('id, transaction_id')
+      .eq('debt_id', debt.id)
+
+    for (const row of rows || []) {
+      if (!row.transaction_id) continue
+      const { data: tx } = await supabase
+        .from('transactions')
+        .select('id, type, amount, account_id, to_account_id')
+        .eq('id', row.transaction_id)
+        .single()
+      if (tx) {
+        await supabase.from('transactions').delete().eq('id', tx.id)
+        await applyTransactionEffect(
+          tx.type as 'expense' | 'income' | 'transfer',
+          tx.amount,
+          tx.account_id,
+          -1,
+          tx.to_account_id
+        )
+      }
+    }
+
+    const { error: deleteError } = await supabase.from('debts').delete().eq('id', debt.id)
+    if (deleteError) {
+      alert('Error deleting debt: ' + deleteError.message)
+      return
+    }
+    if (detailDebtId === debt.id) setDetailDebtId(null)
+    await fetchData()
+  }
 
   return (
     <Layout>
@@ -214,174 +234,117 @@ export function DebtsPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-text">Debts I Owe</h1>
-            <p className="text-sm text-text-muted">Track money you've borrowed and repayments</p>
+            <p className="text-sm text-text-muted">
+              Track what you borrowed and repay it in installments
+            </p>
           </div>
-          <button
-            onClick={() => { setShowForm(true); setEditingDebt(null); setForm({ lender_name: '', amount: '', date_borrowed: new Date().toISOString().split('T')[0], due_date: '', notes: '' }) }}
-            className="btn-primary"
-          >
+          <button onClick={openAddForm} className="btn-primary">
             <Plus className="h-4 w-4" />
             Add debt
           </button>
         </div>
 
-        {/* Summary */}
+        {/* Totals — kept per currency, never summed across currencies */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="stat-card">
-            <HandCoins className="h-5 w-5 text-danger" />
-            <p className="stat-value text-danger">{formatCurrency(totalOwed)}</p>
-            <p className="stat-label">Total outstanding</p>
+          <div className="card">
+            <div className="flex items-center gap-2">
+              <HandCoins className="h-5 w-5 text-danger" />
+              <p className="text-sm font-semibold text-text">Total outstanding</p>
+            </div>
+            {outstandingTotals.length === 0 ? (
+              <p className="mt-2 text-2xl font-bold text-text">
+                {formatCurrency(0, household?.currency)}
+              </p>
+            ) : (
+              <div className="mt-2 space-y-1">
+                {outstandingTotals.map((t) => (
+                  <p key={t.currency} className="text-2xl font-bold text-danger">
+                    {formatCurrency(t.total, t.currency)}
+                    <span className="ml-1 text-xs font-medium text-text-muted">{t.currency}</span>
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
-          <div className="stat-card">
-            <Check className="h-5 w-5 text-success" />
-            <p className="stat-value text-success">{formatCurrency(paidThisMonth)}</p>
-            <p className="stat-label">Repaid total</p>
+          <div className="card">
+            <div className="flex items-center gap-2">
+              <Check className="h-5 w-5 text-success" />
+              <p className="text-sm font-semibold text-text">Total repaid</p>
+            </div>
+            {repaidTotals.length === 0 ? (
+              <p className="mt-2 text-2xl font-bold text-text">
+                {formatCurrency(0, household?.currency)}
+              </p>
+            ) : (
+              <div className="mt-2 space-y-1">
+                {repaidTotals.map((t) => (
+                  <p key={t.currency} className="text-2xl font-bold text-success">
+                    {formatCurrency(t.total, t.currency)}
+                    <span className="ml-1 text-xs font-medium text-text-muted">{t.currency}</span>
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Form */}
-        {showForm && (
-          <div className="card border-accent/30">
-            <h3 className="mb-4 text-lg font-semibold text-text">
-              {editingDebt ? 'Edit debt' : 'Record new debt'}
-            </h3>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label htmlFor="lender_name" className="label">Borrowed from</label>
-                  <input
-                    id="lender_name"
-                    type="text"
-                    value={form.lender_name}
-                    onChange={(e) => setForm({ ...form, lender_name: e.target.value })}
-                    className="input-field"
-                    placeholder="e.g. Mama, John, Office"
-                    required
-                  />
-                </div>
-                <div>
-                  <label htmlFor="amount" className="label">Amount (₦)</label>
-                  <input
-                    id="amount"
-                    type="number"
-                    value={form.amount}
-                    onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                    className="input-field"
-                    placeholder="0"
-                    required
-                  />
-                </div>
-                <div>
-                  <label htmlFor="date_borrowed" className="label">Date borrowed</label>
-                  <input
-                    id="date_borrowed"
-                    type="date"
-                    value={form.date_borrowed}
-                    onChange={(e) => setForm({ ...form, date_borrowed: e.target.value })}
-                    className="input-field"
-                    required
-                  />
-                </div>
-                <div>
-                  <label htmlFor="due_date" className="label">Due date (optional)</label>
-                  <input
-                    id="due_date"
-                    type="date"
-                    value={form.due_date}
-                    onChange={(e) => setForm({ ...form, due_date: e.target.value })}
-                    className="input-field"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label htmlFor="notes" className="label">Notes (optional)</label>
-                  <input
-                    id="notes"
-                    type="text"
-                    value={form.notes}
-                    onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                    className="input-field"
-                    placeholder="e.g. For school fees"
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button type="submit" disabled={saving} className="btn-primary">
-                  {saving ? 'Saving...' : editingDebt ? 'Update' : 'Add debt'}
-                </button>
-                <button type="button" onClick={() => { setShowForm(false); setEditingDebt(null) }} className="btn-secondary">
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
+        {outstandingTotals.length > 1 && (
+          <p className="rounded-lg bg-warning/10 p-3 text-xs text-warning">
+            You owe money in more than one currency. Totals are shown separately — FamFinance does
+            not convert between currencies.
+          </p>
         )}
 
-        {/* Repay form */}
-        {repayingDebt && (
-          <div className="card border-accent/30">
-            <h3 className="mb-2 text-lg font-semibold text-text">
-              Repay {repayingDebt.lender_name}
-            </h3>
-            <p className="mb-4 text-sm text-text-muted">
-              Remaining: {formatCurrency(repayingDebt.amount - repayingDebt.amount_repaid)}
-            </p>
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <div>
-                  <label htmlFor="repay-amount" className="label">Amount to repay (₦)</label>
-                  <input
-                    id="repay-amount"
-                    type="number"
-                    value={repayForm.amount}
-                    onChange={(e) => setRepayForm({ ...repayForm, amount: e.target.value })}
-                    className="input-field"
-                    placeholder="0"
-                    max={repayingDebt.amount - repayingDebt.amount_repaid}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="repay-account" className="label">Pay from account</label>
-                  <select
-                    id="repay-account"
-                    value={repayForm.account_id}
-                    onChange={(e) => setRepayForm({ ...repayForm, account_id: e.target.value })}
-                    className="input-field"
-                  >
-                    <option value="">Select account</option>
-                    {accounts.map((a) => (
-                      <option key={a.id} value={a.id}>{a.name} ({formatCurrency(a.balance)})</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="repay-date" className="label">Date</label>
-                  <input
-                    id="repay-date"
-                    type="date"
-                    value={repayForm.date}
-                    onChange={(e) => setRepayForm({ ...repayForm, date: e.target.value })}
-                    className="input-field"
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleRepay}
-                  disabled={!repayForm.amount || !repayForm.account_id || repaying}
-                  className="btn-primary"
-                >
-                  {repaying ? 'Saving...' : 'Confirm repayment'}
-                </button>
-                <button
-                  onClick={() => { setRepayingDebt(null); setRepayForm({ amount: '', account_id: '', date: new Date().toISOString().split('T')[0], notes: '' }) }}
-                  className="btn-secondary"
-                >
-                  Cancel
-                </button>
-              </div>
+        {/* Debt form */}
+        <Modal
+          open={showForm}
+          title={editingDebt ? 'Edit debt' : 'Record new debt'}
+          description={
+            editingDebt
+              ? 'Adjust the details or repayment plan. Existing payments are never duplicated.'
+              : 'Only the name and amount are required — everything else is optional.'
+          }
+          onClose={() => {
+            setShowForm(false)
+            setEditingDebt(null)
+          }}
+          size="lg"
+          footer={
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowForm(false)
+                  setEditingDebt(null)
+                }}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button type="button" onClick={handleSubmit} disabled={saving} className="btn-primary">
+                {saving ? 'Saving…' : editingDebt ? 'Update debt' : 'Add debt'}
+              </button>
             </div>
-          </div>
-        )}
+          }
+        >
+          <DebtForm values={formValues} onChange={setFormValues} />
+          {error && (
+            <p role="alert" className="mt-3 rounded-lg bg-danger/10 p-3 text-sm text-danger">
+              {error}
+            </p>
+          )}
+        </Modal>
+
+        <DebtDetailModal
+          open={!!detailDebt}
+          debt={detailDebt}
+          repayments={repayments}
+          accounts={accounts}
+          onClose={() => setDetailDebtId(null)}
+          onChanged={() => void fetchData()}
+          onEdit={openEditForm}
+          onAdjustSchedule={openEditForm}
+        />
 
         {/* Debt list */}
         {loading ? (
@@ -392,7 +355,7 @@ export function DebtsPage() {
           <div className="card py-12 text-center">
             <HandCoins className="mx-auto h-10 w-10 text-text-light" />
             <p className="mt-3 text-sm text-text-muted">No debts recorded yet</p>
-            <button onClick={() => setShowForm(true)} className="btn-primary mt-4">
+            <button onClick={openAddForm} className="btn-primary mt-4">
               <Plus className="h-4 w-4" />
               Add your first debt
             </button>
@@ -400,108 +363,121 @@ export function DebtsPage() {
         ) : (
           <div className="space-y-3">
             {debts.map((debt) => {
-              const remaining = debt.amount - debt.amount_repaid
-              const progress = debt.amount > 0 ? (debt.amount_repaid / debt.amount) * 100 : 0
-              const isFullyPaid = debt.status === 'fully_paid'
+              const summary = summaries.get(debt.id)
+              if (!summary) return null
+              const currency = debt.currency || DEFAULT_CURRENCY
+              const isFullyPaid = debt.status === 'fully_paid' || summary.settled
               const isCancelled = debt.status === 'cancelled'
-              const isOverdue = debt.due_date && new Date(debt.due_date) < new Date() && !isFullyPaid && !isCancelled
-              const debtRepayments = repayments.filter((r) => r.debt_id === debt.id)
+              const isOverdue =
+                debt.due_date && new Date(debt.due_date) < new Date() && !isFullyPaid && !isCancelled
+              const pendingCount = repayments.filter(
+                (r) => r.debt_id === debt.id && (r.status ?? 'paid') === 'pending'
+              ).length
 
               return (
-                <div key={debt.id} className="card-hover group">
-                  <div className="flex items-start justify-between">
+                <div
+                  key={debt.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setDetailDebtId(debt.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      setDetailDebtId(debt.id)
+                    }
+                  }}
+                  className="card-hover group cursor-pointer"
+                >
+                  <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3">
-                      <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${
-                        isFullyPaid ? 'bg-success/10' : isCancelled ? 'bg-text-light/10' : isOverdue ? 'bg-danger/10' : 'bg-warning/10'
-                      }`}>
-                        <HandCoins className={`h-5 w-5 ${
-                          isFullyPaid ? 'text-success' : isCancelled ? 'text-text-light' : isOverdue ? 'text-danger' : 'text-warning'
-                        }`} />
+                      <div
+                        className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+                          isFullyPaid
+                            ? 'bg-success/10'
+                            : isCancelled
+                              ? 'bg-text-light/10'
+                              : isOverdue
+                                ? 'bg-danger/10'
+                                : 'bg-warning/10'
+                        }`}
+                      >
+                        <HandCoins
+                          className={`h-5 w-5 ${
+                            isFullyPaid
+                              ? 'text-success'
+                              : isCancelled
+                                ? 'text-text-light'
+                                : isOverdue
+                                  ? 'text-danger'
+                                  : 'text-warning'
+                          }`}
+                        />
                       </div>
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="text-sm font-medium text-text">{debt.lender_name}</p>
-                          {isFullyPaid && <span className="rounded bg-success/10 px-1.5 py-0.5 text-[10px] font-medium text-success">Fully paid</span>}
-                          {!isFullyPaid && !isCancelled && debt.amount_repaid > 0 && <span className="rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning">Partially paid</span>}
-                          {isCancelled && <span className="rounded bg-text-light/10 px-1.5 py-0.5 text-[10px] font-medium text-text-muted">Cancelled</span>}
-                          {isOverdue && <span className="rounded bg-danger/10 px-1.5 py-0.5 text-[10px] font-medium text-danger">Overdue</span>}
+                          {isFullyPaid && <span className="badge-success">Fully paid</span>}
+                          {!isFullyPaid && !isCancelled && summary.repaid > 0 && (
+                            <span className="badge-warning">Partially paid</span>
+                          )}
+                          {isCancelled && <span className="badge-neutral">Cancelled</span>}
+                          {isOverdue && <span className="badge-danger">Overdue</span>}
+                          {pendingCount > 0 && !isFullyPaid && (
+                            <span className="badge-neutral">
+                              <CalendarClock className="h-3.5 w-3.5" />
+                              {pendingCount} scheduled
+                            </span>
+                          )}
                         </div>
                         <p className="text-xs text-text-muted">
-                          Borrowed {formatCurrency(debt.amount)} on {debt.date_borrowed}
+                          Borrowed {formatCurrency(summary.original, currency)} on {debt.date_borrowed}
                           {debt.due_date && ` • Due ${debt.due_date}`}
-                          {debt.notes && ` • ${debt.notes}`}
+                          {summary.nextInstallment && summary.outstanding > 0 && (
+                            <> • Next {formatCurrency(summary.nextInstallment.amount, currency)}</>
+                          )}
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
+
+                    <div className="flex items-center gap-2">
                       <div className="text-right">
                         <p className={`text-sm font-semibold ${isFullyPaid ? 'text-success' : 'text-text'}`}>
-                          {formatCurrency(debt.amount)}
+                          {formatCurrency(summary.outstanding, currency)}
                         </p>
-                        {!isFullyPaid && !isCancelled && (
-                          <p className="text-xs text-text-muted">{formatCurrency(remaining)} left</p>
-                        )}
+                        <p className="text-xs text-text-muted">{currency} outstanding</p>
                       </div>
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-                        {!isFullyPaid && !isCancelled && (
-                          <button
-                            onClick={() => { setRepayingDebt(debt); setRepayForm({ amount: '', account_id: '', date: new Date().toISOString().split('T')[0], notes: '' }) }}
-                            className="rounded-lg bg-cta/10 px-2 py-1 text-xs font-medium text-cta hover:bg-cta/20 cursor-pointer"
-                            title="Repay (full or partial)"
-                          >
-                            <Wallet className="inline h-3 w-3 mr-1" />Pay
-                          </button>
-                        )}
-                        {debtRepayments.length > 0 && (
-                          <button
-                            onClick={() => setShowHistoryFor(showHistoryFor === debt.id ? null : debt.id)}
-                            className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer"
-                            title="Repayment history"
-                          >
-                            <History className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                        <button onClick={() => handleEdit(debt)} className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer">
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                        <button onClick={() => handleDelete(debt.id)} className="rounded-lg p-1.5 text-danger hover:bg-danger/5 cursor-pointer">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                      <div className="row-actions shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <IconButton
+                          icon={Pencil}
+                          label={`Edit ${debt.lender_name}`}
+                          onClick={() => openEditForm(debt)}
+                        />
+                        <IconButton
+                          icon={Trash2}
+                          label={`Delete ${debt.lender_name}`}
+                          variant="danger"
+                          onClick={() => void handleDelete(debt)}
+                        />
                       </div>
                     </div>
                   </div>
 
-                  {/* Progress bar */}
-                  {!isCancelled && debt.amount > 0 && (
+                  {!isCancelled && summary.payoff > 0 && (
                     <div className="mt-3">
-                      <div className="flex items-center justify-between text-xs text-text-muted mb-1">
-                        <span>{formatCurrency(debt.amount_repaid)} of {formatCurrency(debt.amount)} repaid</span>
-                        <span>{Math.round(progress)}%</span>
+                      <div className="mb-1 flex items-center justify-between text-xs text-text-muted">
+                        <span>
+                          {formatCurrency(summary.repaid, currency)} of{' '}
+                          {formatCurrency(summary.payoff, currency)} repaid
+                        </span>
+                        <span>{Math.round(summary.percentRepaid)}%</span>
                       </div>
-                      <div className="h-1.5 rounded-full bg-surface-alt overflow-hidden">
+                      <div className="h-1.5 overflow-hidden rounded-full bg-surface-alt">
                         <div
-                          className={`h-full rounded-full transition-all ${isFullyPaid ? 'bg-success' : 'bg-cta'}`}
-                          style={{ width: `${progress}%` }}
+                          className={`h-full rounded-full transition-all ${
+                            summary.settled ? 'bg-success' : 'bg-cta'
+                          }`}
+                          style={{ width: `${Math.min(summary.percentRepaid, 100)}%` }}
                         />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Repayment history */}
-                  {showHistoryFor === debt.id && debtRepayments.length > 0 && (
-                    <div className="mt-3 rounded-lg border border-border p-3">
-                      <p className="mb-2 text-xs font-medium text-text-muted">Repayment history</p>
-                      <div className="space-y-1.5">
-                        {debtRepayments.map((r) => (
-                          <div key={r.id} className="flex items-center justify-between text-xs">
-                            <span className="text-text-muted">
-                              {r.date} • {formatCurrency(r.amount)}
-                              {r.account?.name && ` from ${r.account.name}`}
-                              {r.notes && ` • ${r.notes}`}
-                            </span>
-                            <span className="text-text-light">recorded {(r.created_at || '').split('T')[0]}</span>
-                          </div>
-                        ))}
                       </div>
                     </div>
                   )}
@@ -511,6 +487,17 @@ export function DebtsPage() {
           </div>
         )}
       </div>
+
+      <DebtDetailModal
+        open={!!detailDebt}
+        debt={detailDebt}
+        repayments={repayments}
+        accounts={accounts}
+        onClose={() => setDetailDebtId(null)}
+        onChanged={() => void fetchData()}
+        onEdit={openEditForm}
+        onAdjustSchedule={openEditForm}
+      />
     </Layout>
   )
 }

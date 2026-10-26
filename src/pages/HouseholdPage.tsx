@@ -157,11 +157,11 @@ export function HouseholdPage() {
   const getRoleBadge = (role: MemberRole) => {
     switch (role) {
       case 'owner':
-        return <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent"><Shield className="h-3 w-3" /> Owner</span>
+        return <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent"><Shield className="h-4 w-4" /> Owner</span>
       case 'editor':
-        return <span className="inline-flex items-center gap-1 rounded-full bg-cta/10 px-2.5 py-0.5 text-xs font-medium text-cta"><Edit3 className="h-3 w-3" /> Editor</span>
+        return <span className="inline-flex items-center gap-1 rounded-full bg-cta/10 px-2.5 py-0.5 text-xs font-medium text-cta"><Edit3 className="h-4 w-4" /> Editor</span>
       case 'viewer':
-        return <span className="inline-flex items-center gap-1 rounded-full bg-surface-alt px-2.5 py-0.5 text-xs font-medium text-text-muted"><Eye className="h-3 w-3" /> Viewer</span>
+        return <span className="inline-flex items-center gap-1 rounded-full bg-surface-alt px-2.5 py-0.5 text-xs font-medium text-text-muted"><Eye className="h-4 w-4" /> Viewer</span>
     }
   }
 

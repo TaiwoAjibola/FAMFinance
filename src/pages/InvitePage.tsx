@@ -280,7 +280,7 @@ export function InvitePage() {
                 <div>
                   <p className="text-xs text-text-muted">Share this invite</p>
                   <button onClick={handleShare} className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-cta hover:text-cta-light cursor-pointer">
-                    <Share2 className="h-3 w-3" /> Share via WhatsApp / Apps
+                    <Share2 className="h-4 w-4" /> Share via WhatsApp / Apps
                   </button>
                 </div>
               </div>

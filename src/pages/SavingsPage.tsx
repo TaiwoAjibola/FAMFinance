@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useHousehold } from '@/contexts/HouseholdContext'
 import { formatCurrency } from '@/lib/utils'
 import { Layout } from '@/components/layout/Layout'
+import { IconButton } from '@/components/ui/IconButton'
 import { Plus, PiggyBank, Target, Pencil, Trash2, Wallet, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react'
 import type { SavingsGoal, Account } from '@/types'
 
@@ -324,7 +325,7 @@ export function SavingsPage() {
                     contributionType === 'contribution' ? 'bg-success text-white' : 'text-text-muted'
                   }`}
                 >
-                  <ArrowDownToLine className="h-3 w-3" /> Save
+                  <ArrowDownToLine className="h-4 w-4" /> Save
                 </button>
                 <button
                   type="button"
@@ -335,7 +336,7 @@ export function SavingsPage() {
                     contributionType === 'withdrawal' ? 'bg-danger text-white' : 'text-text-muted'
                   }`}
                 >
-                  <ArrowUpFromLine className="h-3 w-3" /> Withdraw
+                  <ArrowUpFromLine className="h-4 w-4" /> Withdraw
                 </button>
               </div>
             </div>
@@ -470,37 +471,35 @@ export function SavingsPage() {
                         }}
                         className="btn-secondary text-xs"
                       >
-                        <Plus className="h-3 w-3" />
+                        <Plus className="h-4 w-4" />
                         Save
                       </button>
-                      <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-                        <button
+                      <div className="row-actions">
+                        <IconButton
+                          icon={ArrowUpFromLine}
+                          label="Withdraw from goal"
                           onClick={() => {
                             setContributionGoal(goal)
                             setContributionType('withdrawal')
                             setContributionForm({ amount: '', date: new Date().toISOString().split('T')[0], notes: '', from_account_id: '' })
                           }}
-                          className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer"
-                          title="Withdraw from goal"
-                        >
-                          <ArrowUpFromLine className="h-3.5 w-3.5" />
-                        </button>
-                        <button onClick={() => {
-                          setEditingGoal(goal)
-                          setForm({
-                            name: goal.name,
-                            target_amount: String(goal.target_amount),
-                            target_date: goal.target_date || '',
-                            notes: goal.notes || '',
-                            destination_account_id: goal.destination_account_id || '',
-                          })
-                          setShowForm(true)
-                        }} className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer">
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                        <button onClick={() => handleDeleteGoal(goal.id)} className="rounded-lg p-1.5 text-danger hover:bg-danger/5 cursor-pointer">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        />
+                        <IconButton
+                          icon={Pencil}
+                          label="Edit savings goal"
+                          onClick={() => {
+                            setEditingGoal(goal)
+                            setForm({
+                              name: goal.name,
+                              target_amount: String(goal.target_amount),
+                              target_date: goal.target_date || '',
+                              notes: goal.notes || '',
+                              destination_account_id: goal.destination_account_id || '',
+                            })
+                            setShowForm(true)
+                          }}
+                        />
+                        <IconButton icon={Trash2} label="Delete savings goal" variant="danger" onClick={() => handleDeleteGoal(goal.id)} />
                       </div>
                     </div>
                   </div>

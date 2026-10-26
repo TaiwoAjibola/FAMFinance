@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useHousehold } from '@/contexts/HouseholdContext'
 import { formatCurrency, getCurrentMonth } from '@/lib/utils'
 import { Layout } from '@/components/layout/Layout'
+import { IconButton } from '@/components/ui/IconButton'
 import { Plus, ArrowDownCircle, Pencil, Trash2, Check, Clock, X, Wallet, History, Ban, AlertCircle } from 'lucide-react'
 import type { Account, Category, Transaction } from '@/types'
 
@@ -557,7 +558,7 @@ export function IncomePage() {
                       }`}>
                         {formatCurrency(income.amount)}
                       </span>
-                      <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                      <div className="row-actions">
                         {isActive && outstanding > 0 && (
                           <button
                             onClick={() => {
@@ -569,35 +570,23 @@ export function IncomePage() {
                                 notes: '',
                               })
                             }}
-                            className="rounded-lg bg-cta/10 px-2 py-1 text-xs font-medium text-cta hover:bg-cta/20 cursor-pointer"
+                            className="inline-flex min-h-9 items-center gap-1 rounded-lg bg-cta/10 px-2.5 py-1.5 text-xs font-medium text-cta hover:bg-cta/20 cursor-pointer"
                           >
-                            <Wallet className="inline h-3 w-3 mr-1" />Receive
+                            <Wallet className="h-4 w-4" />Receive
                           </button>
                         )}
                         {incomeReceipts.length > 0 && (
-                          <button
+                          <IconButton
+                            icon={History}
+                            label="Payment history"
                             onClick={() => setShowHistoryFor(showHistoryFor === income.id ? null : income.id)}
-                            className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer"
-                            title="Payment history"
-                          >
-                            <History className="h-3.5 w-3.5" />
-                          </button>
+                          />
                         )}
                         {isActive && received === 0 && (
-                          <button
-                            onClick={() => handleCancelIncome(income)}
-                            className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer"
-                            title="Cancel this expected income"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
+                          <IconButton icon={X} label="Cancel this expected income" onClick={() => handleCancelIncome(income)} />
                         )}
-                        <button onClick={() => handleEdit(income)} className="rounded-lg p-1.5 text-text-muted hover:bg-surface-alt cursor-pointer">
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                        <button onClick={() => handleDelete(income)} className="rounded-lg p-1.5 text-danger hover:bg-danger/5 cursor-pointer">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        <IconButton icon={Pencil} label="Edit income" onClick={() => handleEdit(income)} />
+                        <IconButton icon={Trash2} label="Delete income" variant="danger" onClick={() => handleDelete(income)} />
                       </div>
                     </div>
                   </div>
@@ -629,13 +618,13 @@ export function IncomePage() {
                               {r.date} • {formatCurrency(r.amount)} into {getAccountName(r.account_id)}
                               <span className="ml-1 text-text-light">(recorded {recordedDate(r)})</span>
                             </span>
-                            <button
+                            <IconButton
+                              icon={Trash2}
+                              label="Remove this receipt (reverses the account balance)"
+                              variant="danger"
                               onClick={() => handleDeleteReceipt(r)}
-                              className="rounded p-1 text-danger opacity-0 transition-opacity hover:bg-danger/5 group-hover/rc:opacity-100 cursor-pointer"
-                              title="Remove this receipt (reverses the account balance)"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
+                              className="h-7 w-7"
+                            />
                           </div>
                         ))}
                       </div>

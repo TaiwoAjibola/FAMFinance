@@ -6,11 +6,14 @@ export interface User {
   created_at: string
 }
 
+export type OnboardingState = 'pending' | 'completed' | 'skipped'
+
 export interface Household {
   id: string
   name: string
   owner_id: string
   currency: string
+  onboarding_state?: OnboardingState
   created_at: string
 }
 
@@ -46,6 +49,7 @@ export interface Account {
   type: AccountType
   balance: number
   currency: string
+  description?: string | null
   is_active: boolean
   created_at: string
   updated_at: string
@@ -144,6 +148,8 @@ export interface BudgetPayment {
   account?: Account
 }
 
+export type RepaymentFrequency = 'weekly' | 'biweekly' | 'monthly'
+
 export interface Debt {
   id: string
   household_id: string
@@ -151,12 +157,18 @@ export interface Debt {
   amount: number
   amount_repaid: number
   date_borrowed: string
-  due_date?: string
-  notes?: string
+  due_date?: string | null
+  notes?: string | null
   status: 'active' | 'fully_paid' | 'cancelled'
   created_by: string
   created_at: string
   updated_at: string
+  currency?: string
+  interest_rate?: number | null
+  repayment_frequency?: RepaymentFrequency | null
+  installment_amount?: number | null
+  num_installments?: number | null
+  first_payment_date?: string | null
 }
 
 export type PlannedExpenseStatus = 'planned' | 'partially_paid' | 'paid' | 'deferred' | 'cancelled'
@@ -220,6 +232,8 @@ export interface SavingsGoal {
   updated_at: string
 }
 
+export type InstallmentStatus = 'pending' | 'paid' | 'skipped'
+
 export interface DebtRepayment {
   id: string
   debt_id: string
@@ -229,6 +243,10 @@ export interface DebtRepayment {
   notes?: string
   transaction_id?: string
   created_at: string
+  created_by?: string | null
+  installment_number?: number | null
+  due_date?: string | null
+  status?: InstallmentStatus
   account?: Account
 }
 

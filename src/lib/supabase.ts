@@ -41,6 +41,7 @@ export type Database = {
           name: string
           owner_id: string
           currency: string
+          onboarding_state?: string
           created_at: string
         }
         Insert: {
@@ -89,6 +90,7 @@ export type Database = {
           type: 'bank' | 'cash' | 'savings' | 'other'
           balance: number
           currency: string
+          description?: string | null
           is_active: boolean
           created_at: string
           updated_at: string

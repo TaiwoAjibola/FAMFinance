@@ -2,10 +2,12 @@ import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { useHousehold } from '@/contexts/HouseholdContext'
+import { useFinanceActions } from '@/contexts/FinanceActionsContext'
 import {
   LayoutDashboard,
   Wallet,
   ArrowDownCircle,
+  ArrowUpCircle,
   ArrowRightLeft,
   PiggyBank,
   Calendar,
@@ -66,7 +68,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-cta text-xs font-medium text-white">
               {user?.full_name?.charAt(0) || user?.email?.charAt(0) || '?'}
             </div>
-            <ChevronDown className="h-3 w-3" />
+            <ChevronDown className="h-4 w-4" />
           </button>
           {profileOpen && (
             <div className="absolute right-0 top-full mt-1 w-56 rounded-xl border border-border bg-surface shadow-lg">
@@ -190,10 +192,45 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Main content */}
       <main className="lg:ml-64">
-        <div className="container-app py-4 sm:py-6 lg:py-8">
-          {children}
-        </div>
+        <div className="container-app py-4 pb-24 sm:py-6 lg:py-8 lg:pb-8">{children}</div>
       </main>
+
+      {/* Mobile quick actions — the primary "record something" entry point on
+          phones and tablets, where the sidebar is hidden. */}
+      <QuickActionBar />
     </div>
+  )
+}
+
+function QuickActionBar() {
+  const navigate = useNavigate()
+  const { openTransaction } = useFinanceActions()
+
+  const items = [
+    { label: 'Income', icon: ArrowDownCircle, tone: 'text-success', run: () => openTransaction('income') },
+    { label: 'Expense', icon: ArrowUpCircle, tone: 'text-danger', run: () => openTransaction('expense') },
+    { label: 'Transfer', icon: ArrowRightLeft, tone: 'text-cta', run: () => openTransaction('transfer') },
+    { label: 'Debts', icon: HandCoins, tone: 'text-warning', run: () => navigate('/debts') },
+  ]
+
+  return (
+    <nav
+      aria-label="Quick actions"
+      className="fixed bottom-0 left-0 right-0 z-30 border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] lg:hidden"
+    >
+      <div className="grid grid-cols-4">
+        {items.map((item) => (
+          <button
+            key={item.label}
+            type="button"
+            onClick={item.run}
+            className="flex min-h-[3.25rem] flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium text-text-muted transition-colors hover:bg-surface-alt cursor-pointer"
+          >
+            <item.icon className={`h-5 w-5 ${item.tone}`} />
+            {item.label}
+          </button>
+        ))}
+      </div>
+    </nav>
   )
 }

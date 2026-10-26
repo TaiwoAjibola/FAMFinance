@@ -241,7 +241,7 @@ export function DashboardPage() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-text">Cash Breakdown</h2>
             <Link to="/accounts" className="text-sm font-medium text-cta hover:text-cta-light flex items-center gap-1 cursor-pointer">
-              View all <ArrowRight className="h-3 w-3" />
+              View all <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
           <div className="space-y-3">
@@ -265,7 +265,7 @@ export function DashboardPage() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-text">Recent Transactions</h2>
               <Link to="/history" className="text-sm font-medium text-cta hover:text-cta-light flex items-center gap-1 cursor-pointer">
-                View all <ArrowRight className="h-3 w-3" />
+                View all <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
             {data.recentTransactions.length === 0 ? (
@@ -299,7 +299,7 @@ export function DashboardPage() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-text">Upcoming Commitments</h2>
               <Link to="/planned" className="text-sm font-medium text-cta hover:text-cta-light flex items-center gap-1 cursor-pointer">
-                View all <ArrowRight className="h-3 w-3" />
+                View all <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
             {data.upcomingPlanned.length === 0 ? (

@@ -2,6 +2,10 @@ import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from 'react-r
 import React, { Suspense, lazy } from 'react'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { HouseholdProvider, useHousehold } from '@/contexts/HouseholdContext'
+import { FinanceActionsProvider } from '@/contexts/FinanceActionsContext'
+import { OnboardingProvider } from '@/contexts/OnboardingContext'
+// NOTE: /insights route + AI Insights nav are scaffolded but InsightsPage is not
+// built yet — see Stage 7. Re-add once the insights design is agreed.
 import { LoginPage } from '@/pages/LoginPage'
 import { SignUpPage } from '@/pages/SignUpPage'
 import { SetupPage } from '@/pages/SetupPage'
@@ -101,7 +105,11 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <HouseholdProvider>
-          <AppRoutes />
+          <FinanceActionsProvider>
+            <OnboardingProvider>
+              <AppRoutes />
+            </OnboardingProvider>
+          </FinanceActionsProvider>
         </HouseholdProvider>
       </AuthProvider>
     </BrowserRouter>

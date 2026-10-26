@@ -254,6 +254,38 @@
   margin-bottom: 0.375rem;
 }
 
+/* Row action groups (edit / delete / pay / history).
+ *
+ * Historically these were written as `opacity-0 group-hover:opacity-100`, which
+ * hid every row icon on touch devices: phones and tablets never fire `hover`,
+ * so the icons stayed at opacity 0 and looked "missing" — most visibly in
+ * Budgets, Debts, Accounts and Planned Expenses.
+ *
+ * The reveal is now gated behind a real pointer/hover capability query, so:
+ *   - touch devices (mobile, tablet, installed PWA): icons are always visible
+ *   - mouse devices: icons stay tucked away until the row is hovered or focused,
+ *     exactly as they behaved on desktop before. */
+@utility row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  opacity: 1;
+  transition-property: opacity;
+  transition-duration: 200ms;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .row-actions {
+    opacity: 0;
+  }
+
+  .group:hover .row-actions,
+  .row-actions:focus-within,
+  .row-actions:focus {
+    opacity: 1;
+  }
+}
+
 @utility stat-card {
   background-color: var(--color-surface);
   border-radius: 0.75rem;
