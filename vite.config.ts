@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 import { VitePWA } from 'vite-plugin-pwa'
-import { handleInsights } from './server/insights/handler.ts'
+import { handleInsights } from './api/insights.ts'
 
 /**
  * Serves /api/insights during `npm run dev`, using the same handler as the
