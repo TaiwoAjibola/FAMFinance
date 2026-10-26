@@ -1,5 +1,5 @@
 import { addMonths, addWeeks, isValid, parseISO } from 'date-fns'
-import type { Debt, DebtRepayment, RepaymentFrequency } from '@/types'
+import type { Debt, DebtRepayment, RepaymentFrequency } from '../types/index.ts'
 
 /**
  * Debt installment maths.

@@ -4,27 +4,7 @@ import { useHousehold } from '@/contexts/HouseholdContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { getCurrentMonth } from '@/lib/utils'
-
-const DEFAULT_EXPENSE_CATEGORIES = [
-  'Food and food-related',
-  'Transportation',
-  "Daughter's needs",
-  'Other household costs',
-  'Internet',
-  'Theological seminary',
-  'Cooking gas',
-  'Water',
-  'Electricity',
-  'Dustbin',
-]
-
-const DEFAULT_INCOME_CATEGORIES = [
-  'Salary',
-  'Freelance',
-  'Project income',
-  'Gifts',
-  'Other income',
-]
+import { SUGGESTED_EXPENSE_CATEGORIES, SUGGESTED_INCOME_CATEGORIES } from '@/lib/categories'
 
 export function SetupPage() {
   const [householdName, setHouseholdName] = useState('')
@@ -132,18 +112,22 @@ export function SetupPage() {
       .single()
 
     if (hh) {
+      const expense = SUGGESTED_EXPENSE_CATEGORIES
+      const income = SUGGESTED_INCOME_CATEGORIES
       const categories = [
-        ...DEFAULT_EXPENSE_CATEGORIES.map((name, i) => ({
+        ...expense.map((c, i) => ({
           household_id: hh.id,
-          name,
+          name: c.name,
           type: 'expense' as const,
+          icon: c.icon,
           sort_order: i,
         })),
-        ...DEFAULT_INCOME_CATEGORIES.map((name, i) => ({
+        ...income.map((c, i) => ({
           household_id: hh.id,
-          name,
+          name: c.name,
           type: 'income' as const,
-          sort_order: i + DEFAULT_EXPENSE_CATEGORIES.length,
+          icon: c.icon,
+          sort_order: i + expense.length,
         })),
       ]
 

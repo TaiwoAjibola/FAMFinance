@@ -4,8 +4,6 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { HouseholdProvider, useHousehold } from '@/contexts/HouseholdContext'
 import { FinanceActionsProvider } from '@/contexts/FinanceActionsContext'
 import { OnboardingProvider } from '@/contexts/OnboardingContext'
-// NOTE: /insights route + AI Insights nav are scaffolded but InsightsPage is not
-// built yet — see Stage 7. Re-add once the insights design is agreed.
 import { LoginPage } from '@/pages/LoginPage'
 import { SignUpPage } from '@/pages/SignUpPage'
 import { SetupPage } from '@/pages/SetupPage'
@@ -55,6 +53,7 @@ const HouseholdPageLazy = lazy(() => import('@/pages/HouseholdPage').then(m => (
 const SettingsPageLazy = lazy(() => import('@/pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
 const InvitePageLazy = lazy(() => import('@/pages/InvitePage').then(m => ({ default: m.InvitePage })))
 const DebtsPageLazy = lazy(() => import('@/pages/DebtsPage').then(m => ({ default: m.DebtsPage })))
+const InsightsPageLazy = lazy(() => import('@/pages/InsightsPage').then(m => ({ default: m.InsightsPage })))
 
 function LoadingSpinner() {
   return (
@@ -93,6 +92,7 @@ function AppRoutes() {
         <Route path="/history" element={<ProtectedRoute><HistoryPageLazy /></ProtectedRoute>} />
         <Route path="/household" element={<ProtectedRoute><HouseholdPageLazy /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><SettingsPageLazy /></ProtectedRoute>} />
+        <Route path="/insights" element={<ProtectedRoute><InsightsPageLazy /></ProtectedRoute>} />
         <Route path="/invite/:token" element={<InvitePageLazy />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

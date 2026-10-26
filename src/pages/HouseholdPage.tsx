@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { useHousehold } from '@/contexts/HouseholdContext'
 import { Layout } from '@/components/layout/Layout'
+import { Modal, ModalFormFooter } from '@/components/ui/Modal'
 import { Users, Mail, UserPlus, Trash2, Shield, Link, Copy, Check, RefreshCw, Eye, Edit3 } from 'lucide-react'
 import type { Invitation, MemberRole, HouseholdMember } from '@/types'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -253,13 +254,25 @@ export function HouseholdPage() {
         </div>
 
         {/* Invite form */}
-        {showInviteForm && (
-          <div className="card border-accent/30">
-            <h3 className="mb-4 text-lg font-semibold text-text">Invite member</h3>
+        <Modal
+          open={showInviteForm}
+          title="Invite member"
+          description="They'll get a link to join with their own passcode."
+          onClose={() => { setShowInviteForm(false); setError('') }}
+          footer={
+            <ModalFormFooter
+              formId="invite-form"
+              submitLabel="Send invitation"
+              savingLabel="Sending..."
+              saving={saving}
+              onCancel={() => { setShowInviteForm(false); setError('') }}
+            />
+          }
+        >
             {error && (
               <div role="alert" className="mb-4 rounded-lg bg-danger/10 p-3 text-sm text-danger">{error}</div>
             )}
-            <form onSubmit={handleInvite} className="space-y-4">
+            <form id="invite-form" onSubmit={handleInvite} className="space-y-4">
               <div>
                 <label htmlFor="email" className="label">Email address</label>
                 <input
@@ -288,17 +301,8 @@ export function HouseholdPage() {
                     {inviteRole === 'editor' ? 'Can add/edit all household finances' : 'Read-only access to all finances'}
                   </p>
                 </div>
-              <div className="flex gap-2">
-                <button type="submit" disabled={saving} className="btn-primary">
-                  {saving ? 'Sending...' : 'Send invitation'}
-                </button>
-                <button type="button" onClick={() => { setShowInviteForm(false); setError('') }} className="btn-secondary">
-                  Cancel
-                </button>
-              </div>
             </form>
-          </div>
-        )}
+        </Modal>
 
         {/* Pending invitations */}
         {invitations.filter((i) => i.status === 'pending').length > 0 && (

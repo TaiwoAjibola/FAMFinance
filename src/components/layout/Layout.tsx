@@ -20,6 +20,7 @@ import {
   ChevronDown,
   Users,
   HandCoins,
+  Sparkles,
 } from 'lucide-react'
 
 const navItems = [
@@ -32,6 +33,7 @@ const navItems = [
   { path: '/planned', label: 'Planned', icon: Target },
   { path: '/savings', label: 'Savings', icon: PiggyBank },
   { path: '/history', label: 'History', icon: History },
+  { path: '/insights', label: 'AI Insights', icon: Sparkles },
 ]
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -41,6 +43,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate()
   const { user, signOut } = useAuth()
   const { household } = useHousehold()
+  const { openTransaction } = useFinanceActions()
 
   const handleSignOut = async () => {
     await signOut()
@@ -124,6 +127,36 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <Link to="/" className="text-lg font-bold text-primary">
             FamFinance
           </Link>
+        </div>
+
+        <div className="border-b border-border p-3">
+          <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wide text-text-light">Record</p>
+          <div className="space-y-1">
+            <button
+              type="button"
+              onClick={() => { setSidebarOpen(false); openTransaction('income') }}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-text-muted transition-colors hover:bg-success/5 hover:text-success cursor-pointer"
+            >
+              <ArrowDownCircle className="h-4 w-4 text-success" />
+              Add income
+            </button>
+            <button
+              type="button"
+              onClick={() => { setSidebarOpen(false); openTransaction('expense') }}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-text-muted transition-colors hover:bg-danger/5 hover:text-danger cursor-pointer"
+            >
+              <ArrowUpCircle className="h-4 w-4 text-danger" />
+              Add expense
+            </button>
+            <button
+              type="button"
+              onClick={() => { setSidebarOpen(false); openTransaction('transfer') }}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-text-muted transition-colors hover:bg-cta/5 hover:text-cta cursor-pointer"
+            >
+              <ArrowRightLeft className="h-4 w-4 text-cta" />
+              Transfer money
+            </button>
+          </div>
         </div>
 
         <nav className="flex-1 overflow-y-auto p-3">

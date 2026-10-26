@@ -5,6 +5,7 @@ import { useHousehold } from '@/contexts/HouseholdContext'
 import { formatCurrency, getCurrentMonth } from '@/lib/utils'
 import { Layout } from '@/components/layout/Layout'
 import { IconButton } from '@/components/ui/IconButton'
+import { Modal, ModalFormFooter } from '@/components/ui/Modal'
 import { Plus, Target, Clock, CheckCircle, AlertCircle, Pencil, Trash2, Wallet } from 'lucide-react'
 import type { PlannedExpense, InstallmentPlan, Account } from '@/types'
 
@@ -366,12 +367,22 @@ export function PlannedExpensesPage() {
         </div>
 
         {/* Form */}
-        {showForm && (
-          <div className="card border-accent/30">
-            <h3 className="mb-4 text-lg font-semibold text-text">
-              {editingExpense ? 'Edit planned expense' : 'Add planned expense'}
-            </h3>
-            <form onSubmit={handleSubmit} className="space-y-4">
+        <Modal
+          open={showForm}
+          title={editingExpense ? 'Edit planned expense' : 'Add planned expense'}
+          description="Something you know you'll pay for, and when."
+          onClose={() => { setShowForm(false); setEditingExpense(null) }}
+          size="lg"
+          footer={
+            <ModalFormFooter
+              formId="planned-form"
+              submitLabel={editingExpense ? 'Update' : 'Add planned expense'}
+              saving={saving}
+              onCancel={() => { setShowForm(false); setEditingExpense(null) }}
+            />
+          }
+        >
+            <form id="planned-form" onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label htmlFor="title" className="label">Title</label>
@@ -473,27 +484,36 @@ export function PlannedExpensesPage() {
                 </div>
               )}
 
-              <div className="flex gap-2">
-                <button type="submit" disabled={saving} className="btn-primary">
-                  {saving ? 'Saving...' : editingExpense ? 'Update' : 'Add planned expense'}
-                </button>
-                <button type="button" onClick={() => { setShowForm(false); setEditingExpense(null) }} className="btn-secondary">
-                  Cancel
-                </button>
-              </div>
             </form>
-          </div>
-        )}
+        </Modal>
 
         {/* Pay form */}
-        {payingExpense && (
-          <div className="card border-accent/30">
-            <h3 className="mb-2 text-lg font-semibold text-text">
-              Pay {payingExpense.title}
-            </h3>
-            <p className="mb-4 text-sm text-text-muted">
-              Amount: {formatCurrency(payingExpense.amount)}
-            </p>
+        <Modal
+          open={!!payingExpense}
+          title={payingExpense ? `Pay ${payingExpense.title}` : 'Pay planned expense'}
+          description={payingExpense ? `Planned amount: ${formatCurrency(payingExpense.amount)}` : undefined}
+          onClose={() => { setPayingExpense(null); setPayForm({ amount: '', account_id: '', date: new Date().toISOString().split('T')[0] }) }}
+          size="lg"
+          footer={
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => { setPayingExpense(null); setPayForm({ amount: '', account_id: '', date: new Date().toISOString().split('T')[0] }) }}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handlePay}
+                disabled={!payForm.amount || !payForm.account_id || paying}
+                className="btn-primary"
+              >
+                {paying ? 'Saving...' : 'Confirm payment'}
+              </button>
+            </div>
+          }
+        >
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div>
@@ -535,30 +555,11 @@ export function PlannedExpensesPage() {
                   />
                 </div>
               </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={handlePay}
-                  disabled={!payForm.amount || !payForm.account_id || paying}
-                  className="btn-primary"
-                >
-                  {paying ? 'Saving...' : 'Confirm payment'}
-                </button>
-                <button
-                  onClick={() => {
-                    setPayingExpense(null)
-                    setPayForm({ amount: '', account_id: '', date: new Date().toISOString().split('T')[0] })
-                  }}
-                  className="btn-secondary"
-                >
-                  Cancel
-                </button>
-              </div>
               <p className="text-xs text-text-muted">
                 This creates an expense transaction and deducts from the selected account.
               </p>
             </div>
-          </div>
-        )}
+        </Modal>
 
 {/* Expenses list */}
         {expenseList}

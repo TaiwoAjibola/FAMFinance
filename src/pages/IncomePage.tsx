@@ -5,6 +5,9 @@ import { useHousehold } from '@/contexts/HouseholdContext'
 import { formatCurrency, getCurrentMonth } from '@/lib/utils'
 import { Layout } from '@/components/layout/Layout'
 import { IconButton } from '@/components/ui/IconButton'
+import { useFinanceActions } from '@/contexts/FinanceActionsContext'
+import { CategoryPicker } from '@/components/ui/CategoryPicker'
+import { Modal, ModalFormFooter } from '@/components/ui/Modal'
 import { Plus, ArrowDownCircle, Pencil, Trash2, Check, Clock, X, Wallet, History, Ban, AlertCircle } from 'lucide-react'
 import type { Account, Category, Transaction } from '@/types'
 
@@ -13,6 +16,7 @@ type IncomeStatus = 'expected' | 'partially_received' | 'received' | 'cancelled'
 export function IncomePage() {
   const { user } = useAuth()
   const { household } = useHousehold()
+  const { version } = useFinanceActions()
   const [incomes, setIncomes] = useState<Transaction[]>([])
   const [receipts, setReceipts] = useState<Transaction[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -43,7 +47,7 @@ export function IncomePage() {
   useEffect(() => {
     if (!household) return
     fetchData()
-  }, [household])
+  }, [household, version])
 
   const fetchData = async () => {
     if (!household) return
@@ -81,6 +85,20 @@ export function IncomePage() {
   }
 
   // Add expected income (no account/balance change until money arrives)
+  const createCategory = async (name: string, kind: 'income' | 'expense') => {
+    if (!household) return
+    const maxOrder = categories.reduce((max, c) => Math.max(max, c.sort_order), -1)
+    const { data } = await supabase
+      .from('categories')
+      .insert({ household_id: household.id, name, type: kind, sort_order: maxOrder + 1 })
+      .select()
+      .single()
+    if (data) {
+      setCategories((prev) => [...prev, data as Category])
+      setForm((f) => ({ ...f, category_id: (data as Category).id }))
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!household || !user) return
@@ -345,12 +363,22 @@ export function IncomePage() {
         </div>
 
         {/* Form */}
-        {showForm && (
-          <div className="card border-accent/30">
-            <h3 className="mb-4 text-lg font-semibold text-text">
-              {editingIncome ? 'Edit expected income' : 'Add expected income'}
-            </h3>
-            <form onSubmit={handleSubmit} className="space-y-4">
+        <Modal
+          open={showForm}
+          title={editingIncome ? 'Edit expected income' : 'Add expected income'}
+          description="Money you expect to receive. You record each payment when it arrives."
+          onClose={() => { setShowForm(false); setEditingIncome(null) }}
+          size="lg"
+          footer={
+            <ModalFormFooter
+              formId="income-form"
+              submitLabel={editingIncome ? 'Update' : 'Add expected income'}
+              saving={saving}
+              onCancel={() => { setShowForm(false); setEditingIncome(null) }}
+            />
+          }
+        >
+            <form id="income-form" onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label htmlFor="amount" className="label">Expected amount (₦)</label>
@@ -377,18 +405,14 @@ export function IncomePage() {
                   />
                 </div>
                 <div>
-                  <label htmlFor="category" className="label">Category</label>
-                  <select
-                    id="category"
+                  <span className="label">Category</span>
+                  <CategoryPicker
+                    categories={categories.filter((c) => c.type === 'income')}
+                    kind="income"
                     value={form.category_id}
-                    onChange={(e) => setForm({ ...form, category_id: e.target.value })}
-                    className="input-field"
-                  >
-                    <option value="">Select category</option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
+                    onChange={(id) => setForm({ ...form, category_id: id })}
+                    onCreate={(name) => createCategory(name, 'income')}
+                  />
                 </div>
                 <div>
                   <label htmlFor="date" className="label">Expected date</label>
@@ -416,27 +440,37 @@ export function IncomePage() {
                   </p>
                 </div>
               </div>
-              <div className="flex gap-2">
-                <button type="submit" disabled={saving} className="btn-primary">
-                  {saving ? 'Saving...' : editingIncome ? 'Update' : 'Add expected income'}
-                </button>
-                <button type="button" onClick={() => { setShowForm(false); setEditingIncome(null) }} className="btn-secondary">
-                  Cancel
-                </button>
-              </div>
             </form>
-          </div>
-        )}
+        </Modal>
 
         {/* Receive-payment form (full or partial) */}
-        {receivingIncome && (
-          <div className="card border-accent/30">
-            <h3 className="mb-1 text-lg font-semibold text-text">Record money received</h3>
-            <p className="mb-4 text-sm text-text-muted">
-              {receivingIncome.description} — expected {formatCurrency(receivingIncome.amount)},
-              received so far {formatCurrency(receivingIncome.received_amount || 0)},
-              outstanding <span className="font-medium text-text">{formatCurrency(receivingIncome.amount - (receivingIncome.received_amount || 0))}</span>
-            </p>
+        <Modal
+          open={!!receivingIncome}
+          title="Record money received"
+          description={receivingIncome ? `${receivingIncome.description} — outstanding ${formatCurrency(receivingIncome.amount - (receivingIncome.received_amount || 0))} of ${formatCurrency(receivingIncome.amount)}` : undefined}
+          onClose={() => { setReceivingIncome(null); setReceiveForm({ amount: '', account_id: '', date: new Date().toISOString().split('T')[0], notes: '' }) }}
+          size="lg"
+          footer={
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => { setReceivingIncome(null); setReceiveForm({ amount: '', account_id: '', date: new Date().toISOString().split('T')[0], notes: '' }) }}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleReceive}
+                disabled={!receiveForm.amount || !receiveForm.account_id || receiving}
+                className="btn-primary"
+              >
+                <Wallet className="h-4 w-4" />
+                {receiving ? 'Recording...' : 'Record receipt'}
+              </button>
+            </div>
+          }
+        >
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div>
@@ -448,7 +482,7 @@ export function IncomePage() {
                     onChange={(e) => setReceiveForm({ ...receiveForm, amount: e.target.value })}
                     className="input-field"
                     placeholder="0"
-                    max={receivingIncome.amount - (receivingIncome.received_amount || 0)}
+                    max={receivingIncome ? receivingIncome.amount - (receivingIncome.received_amount || 0) : undefined}
                     required
                   />
                   <p className="mt-1 text-xs text-text-muted">Partial amounts are fine — e.g. ₦100,000 of a ₦200,000 payment.</p>
@@ -480,28 +514,11 @@ export function IncomePage() {
                   />
                 </div>
               </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleReceive}
-                  disabled={!receiveForm.amount || !receiveForm.account_id || receiving}
-                  className="btn-primary"
-                >
-                  <Wallet className="h-4 w-4" />
-                  {receiving ? 'Recording...' : 'Record receipt'}
-                </button>
-                <button
-                  onClick={() => { setReceivingIncome(null); setReceiveForm({ amount: '', account_id: '', date: new Date().toISOString().split('T')[0], notes: '' }) }}
-                  className="btn-secondary"
-                >
-                  Cancel
-                </button>
-              </div>
               <p className="text-xs text-text-muted">
                 Only the amount entered is added to the account — never the full expected amount.
               </p>
             </div>
-          </div>
-        )}
+        </Modal>
 
         {/* Income list */}
         {loading ? (

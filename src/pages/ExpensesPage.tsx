@@ -6,12 +6,16 @@ import { formatCurrency, getCurrentMonth } from '@/lib/utils'
 import { Layout } from '@/components/layout/Layout'
 import { Table, Th, Td, TableLoading, TableEmpty } from '@/components/Table'
 import { IconButton } from '@/components/ui/IconButton'
+import { Modal, ModalFormFooter } from '@/components/ui/Modal'
+import { useFinanceActions } from '@/contexts/FinanceActionsContext'
+import { CategoryPicker } from '@/components/ui/CategoryPicker'
 import { Plus, ArrowUpCircle, ArrowDownCircle, ArrowRightLeft, Pencil, Trash2, Filter, Receipt } from 'lucide-react'
 import type { Account, Category, Transaction } from '@/types'
 
 export function ExpensesPage() {
   const { user } = useAuth()
   const { household } = useHousehold()
+  const { version } = useFinanceActions()
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -36,7 +40,7 @@ export function ExpensesPage() {
   useEffect(() => {
     if (!household) return
     fetchData()
-  }, [household])
+  }, [household, version])
 
   const fetchData = async () => {
     if (!household) return
@@ -69,6 +73,20 @@ export function ExpensesPage() {
     setAccounts(accountRes.data || [])
     setCategories(catRes.data || [])
     setLoading(false)
+  }
+
+  const createCategory = async (name: string, kind: 'income' | 'expense') => {
+    if (!household) return
+    const maxOrder = categories.reduce((max, c) => Math.max(max, c.sort_order), -1)
+    const { data } = await supabase
+      .from('categories')
+      .insert({ household_id: household.id, name, type: kind, sort_order: maxOrder + 1 })
+      .select()
+      .single()
+    if (data) {
+      setCategories((prev) => [...prev, data as Category])
+      setForm((f) => ({ ...f, category_id: (data as Category).id }))
+    }
   }
 
   const typeCategories = categories.filter((c) =>
@@ -297,12 +315,22 @@ export function ExpensesPage() {
         </div>
 
         {/* Form */}
-        {showForm && (
-          <div className="card border-accent/30">
-            <h3 className="mb-4 text-lg font-semibold text-text">
-              {editingTx ? 'Edit transaction' : 'Record transaction'}
-            </h3>
-            <form onSubmit={handleSubmit} className="space-y-4">
+        <Modal
+          open={showForm}
+          title={editingTx ? 'Edit transaction' : 'Record transaction'}
+          description="Money in, money out, or a move between your accounts."
+          onClose={() => { setShowForm(false); setEditingTx(null) }}
+          size="lg"
+          footer={
+            <ModalFormFooter
+              formId="transaction-form"
+              submitLabel={editingTx ? 'Update' : 'Record'}
+              saving={saving}
+              onCancel={() => { setShowForm(false); setEditingTx(null) }}
+            />
+          }
+        >
+            <form id="transaction-form" onSubmit={handleSubmit} className="space-y-4">
               {/* Transaction type toggle */}
               <div className="flex flex-wrap gap-2" role="tablist">
                 <button
@@ -400,18 +428,14 @@ export function ExpensesPage() {
                   </div>
                 ) : (
                   <div>
-                    <label htmlFor="category" className="label">Category</label>
-                    <select
-                      id="category"
+                    <span className="label">Category</span>
+                    <CategoryPicker
+                      categories={typeCategories}
+                      kind={form.type === 'income' ? 'income' : 'expense'}
                       value={form.category_id}
-                      onChange={(e) => setForm({ ...form, category_id: e.target.value })}
-                      className="input-field"
-                    >
-                      <option value="">Select category</option>
-                      {typeCategories.map((c) => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
+                      onChange={(id) => setForm({ ...form, category_id: id })}
+                      onCreate={(name) => createCategory(name, form.type === 'income' ? 'income' : 'expense')}
+                    />
                   </div>
                 )}
                 <div>
@@ -438,17 +462,8 @@ export function ExpensesPage() {
                   />
                 </div>
               </div>
-              <div className="flex gap-2">
-                <button type="submit" disabled={saving} className="btn-primary">
-                  {saving ? 'Saving...' : editingTx ? 'Update' : 'Record'}
-                </button>
-                <button type="button" onClick={() => { setShowForm(false); setEditingTx(null) }} className="btn-secondary">
-                  Cancel
-                </button>
-              </div>
             </form>
-          </div>
-        )}
+        </Modal>
 
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-2">

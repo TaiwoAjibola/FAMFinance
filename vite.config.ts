@@ -1,13 +1,55 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 import { VitePWA } from 'vite-plugin-pwa'
+import { handleInsights } from './server/insights/handler.ts'
 
-export default defineConfig({
+/**
+ * Serves /api/insights during `npm run dev`, using the same handler as the
+ * Vercel function. Secrets are read from .env here and never reach the bundle.
+ */
+function insightsDevApi(env: Record<string, string>): Plugin {
+  return {
+    name: 'famfinance-insights-dev-api',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/api/insights', async (req, res, next) => {
+        if (req.method !== 'POST') return next()
+        let raw = ''
+        for await (const chunk of req) raw += chunk
+        let body: unknown = {}
+        try {
+          body = raw ? JSON.parse(raw) : {}
+        } catch {
+          body = {}
+        }
+        const result = await handleInsights({
+          method: req.method,
+          authorization: req.headers.authorization,
+          body,
+          env: {
+            SUPABASE_URL: env.VITE_SUPABASE_URL,
+            SUPABASE_ANON_KEY: env.VITE_SUPABASE_ANON_KEY,
+            GROQ_API_KEY: env.GROQ_API_KEY,
+            GROQ_MODEL: env.GROQ_MODEL,
+          },
+        })
+        res.statusCode = result.status
+        res.setHeader('Content-Type', 'application/json')
+        res.end(JSON.stringify(result.body))
+      })
+    },
+  }
+}
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  return {
   plugins: [
     react(),
     tailwindcss(),
+    insightsDevApi(env),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'robots.txt'],
@@ -96,4 +138,5 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  }
 })

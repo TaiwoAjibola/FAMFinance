@@ -6,6 +6,7 @@ import { DEFAULT_CURRENCY, currencyOptions, getCurrency, groupByCurrency } from 
 import { Layout } from '@/components/layout/Layout'
 import { Plus, Wallet, Landmark, Banknote, PiggyBank, HelpCircle, Pencil, Trash2 } from 'lucide-react'
 import { IconButton } from '@/components/ui/IconButton'
+import { Modal, ModalFormFooter } from '@/components/ui/Modal'
 import type { Account } from '@/types'
 
 const ACCOUNT_ICONS: Record<string, React.ReactNode> = {
@@ -178,13 +179,23 @@ export function AccountsPage() {
         </div>
 
         {/* Account form */}
-        {showForm && (
-          <div className="card border-accent/30">
-            <h3 className="mb-4 text-lg font-semibold text-text">
-              {editingAccount ? 'Edit account' : 'Add new account'}
-            </h3>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <Modal
+          open={showForm}
+          title={editingAccount ? 'Edit account' : 'Add new account'}
+          description="Where your money sits. You can change these details later."
+          onClose={() => { setShowForm(false); setEditingAccount(null) }}
+          size="lg"
+          footer={
+            <ModalFormFooter
+              formId="account-form"
+              submitLabel={editingAccount ? 'Update account' : 'Add account'}
+              saving={saving}
+              onCancel={() => { setShowForm(false); setEditingAccount(null) }}
+            />
+          }
+        >
+            <form id="account-form" onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label htmlFor="name" className="label">Account name</label>
                   <input
@@ -241,21 +252,8 @@ export function AccountsPage() {
                   </p>
                 </div>
               </div>
-              <div className="flex gap-2">
-                <button type="submit" disabled={saving} className="btn-primary">
-                  {saving ? 'Saving...' : editingAccount ? 'Update account' : 'Add account'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setShowForm(false); setEditingAccount(null) }}
-                  className="btn-secondary"
-                >
-                  Cancel
-                </button>
-              </div>
             </form>
-          </div>
-        )}
+        </Modal>
 
         {/* Account list */}
         {loading ? (

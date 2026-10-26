@@ -4,10 +4,12 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { useHousehold } from '@/contexts/HouseholdContext'
 import { formatCurrency, getCurrentMonth, getMonthLabel, previousMonth, nextMonth } from '@/lib/utils'
+import { SUGGESTED_EXPENSE_CATEGORIES, SUGGESTED_INCOME_CATEGORIES } from '@/lib/categories'
 import { Layout } from '@/components/layout/Layout'
 import { Table, Th, Td } from '@/components/Table'
-import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Check, X, Repeat, Tag, Settings, Wallet, History } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Repeat, Tag, Settings, Wallet, History } from 'lucide-react'
 import { IconButton } from '@/components/ui/IconButton'
+import { Modal } from '@/components/ui/Modal'
 import type { Category, BudgetItem, MonthlyBudget, Account, BudgetPayment } from '@/types'
 
 export function BudgetPage() {
@@ -194,6 +196,30 @@ export function BudgetPage() {
   }
 
   // --- Category CRUD ---
+
+  const addSuggestedCategories = async () => {
+    if (!household) return
+    // Check every category, not just the expense ones this page lists, so
+    // income suggestions are never added twice.
+    const { data: all } = await supabase
+      .from('categories')
+      .select('name, sort_order')
+      .eq('household_id', household.id)
+    const existing = new Set((all || []).map((c) => c.name.toLowerCase()))
+    const maxOrder = (all || []).reduce((max, c) => Math.max(max, c.sort_order), -1)
+    const missing = [...SUGGESTED_EXPENSE_CATEGORIES, ...SUGGESTED_INCOME_CATEGORIES]
+      .filter((c) => !existing.has(c.name.toLowerCase()))
+    if (missing.length === 0) return
+    const rows = missing.map((c, i) => ({
+      household_id: household.id,
+      name: c.name,
+      type: SUGGESTED_INCOME_CATEGORIES.includes(c) ? ('income' as const) : ('expense' as const),
+      icon: c.icon,
+      sort_order: maxOrder + 1 + i,
+    }))
+    await supabase.from('categories').insert(rows)
+    await fetchData()
+  }
 
   const handleAddCategory = async () => {
     if (!household || !catForm.name.trim()) return
@@ -387,6 +413,9 @@ export function BudgetPage() {
     (cat) => !budgetItems.some((item) => item.category_id === cat.id)
   )
 
+  const payingItemRow = budgetItems.find((i) => i.id === payingItem)
+  const editingRow = budgetItems.find((i) => i.id === editingItem)
+
   return (
     <Layout>
       <div className="space-y-6">
@@ -488,42 +517,80 @@ export function BudgetPage() {
                 <div className="mt-4 space-y-3">
                   {categories.map((cat) => (
                     <div key={cat.id} className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
-                      {editingCategory === cat.id ? (
-                        <div className="flex items-center gap-2 flex-1">
-                          <input type="text" value={catForm.name} onChange={(e) => setCatForm({ name: e.target.value })} className="input-field flex-1 text-sm" onKeyDown={(e) => e.key === 'Enter' && handleUpdateCategory(cat.id)} autoFocus />
-                          <IconButton icon={Check} label="Save category" disabled={catSaving} variant="success" onClick={() => handleUpdateCategory(cat.id)} />
-                          <IconButton icon={X} label="Cancel" onClick={() => setEditingCategory(null)} />
-                        </div>
-                      ) : (
-                        <>
-                          <span className="text-sm text-text">{cat.name}</span>
-                          <div className="flex gap-1">
-                            <IconButton icon={Pencil} label="Edit category" onClick={() => { setEditingCategory(cat.id); setCatForm({ name: cat.name }) }} />
-                            <IconButton icon={Trash2} label="Delete category" variant="danger" onClick={() => handleDeleteCategory(cat.id)} />
-                          </div>
-                        </>
-                      )}
+                      <span className="text-sm text-text">{cat.name}</span>
+                      <div className="flex gap-1">
+                        <IconButton icon={Pencil} label="Edit category" onClick={() => { setEditingCategory(cat.id); setCatForm({ name: cat.name }) }} />
+                        <IconButton icon={Trash2} label="Delete category" variant="danger" onClick={() => handleDeleteCategory(cat.id)} />
+                      </div>
                     </div>
                   ))}
-                  {addingCategory ? (
-                    <div className="flex items-center gap-2">
-                      <input type="text" value={catForm.name} onChange={(e) => setCatForm({ name: e.target.value })} className="input-field flex-1 text-sm" placeholder="Category name" onKeyDown={(e) => e.key === 'Enter' && handleAddCategory()} autoFocus />
-                      <button onClick={handleAddCategory} disabled={catSaving || !catForm.name.trim()} className="btn-primary text-sm">Add</button>
-                      <button onClick={() => { setAddingCategory(false); setCatForm({ name: '' }) }} className="btn-secondary text-sm">Cancel</button>
-                    </div>
-                  ) : (
+                  <div className="flex flex-wrap gap-4">
                     <button onClick={() => { setAddingCategory(true); setCatForm({ name: '' }) }} className="flex items-center gap-2 text-sm text-cta hover:text-cta-light cursor-pointer">
                       <Plus className="h-4 w-4" />Add category
                     </button>
-                  )}
+                    <button onClick={() => void addSuggestedCategories()} className="flex items-center gap-2 text-sm text-text-muted hover:text-text cursor-pointer">
+                      <Tag className="h-4 w-4" />Add suggested categories
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
 
+            {/* Category add / edit */}
+            <Modal
+              open={addingCategory || !!editingCategory}
+              title={editingCategory ? 'Edit category' : 'Add category'}
+              description="Categories group what you spend and earn, so reports stay readable."
+              onClose={() => { setAddingCategory(false); setEditingCategory(null); setCatForm({ name: '' }) }}
+              footer={
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button onClick={() => { setAddingCategory(false); setEditingCategory(null); setCatForm({ name: '' }) }} className="btn-secondary">Cancel</button>
+                  <button
+                    onClick={() => (editingCategory ? handleUpdateCategory(editingCategory) : handleAddCategory())}
+                    disabled={catSaving || !catForm.name.trim()}
+                    className="btn-primary"
+                  >
+                    {catSaving ? 'Saving...' : editingCategory ? 'Update category' : 'Add category'}
+                  </button>
+                </div>
+              }
+            >
+              <div>
+                <label htmlFor="cat-name" className="label">Category name</label>
+                <input
+                  id="cat-name"
+                  type="text"
+                  value={catForm.name}
+                  onChange={(e) => setCatForm({ name: e.target.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && catForm.name.trim()) {
+                      e.preventDefault()
+                      if (editingCategory) void handleUpdateCategory(editingCategory)
+                      else void handleAddCategory()
+                    }
+                  }}
+                  className="input-field"
+                  placeholder="e.g. School fees"
+                  autoFocus
+                />
+              </div>
+            </Modal>
+
             {/* Add budget item form */}
-            {addingItem && (
-              <div className="card border-accent/30">
-                <h3 className="mb-4 text-lg font-semibold text-text">Add budget item</h3>
+            <Modal
+              open={addingItem}
+              title="Add budget item"
+              description="Plan how much this month should go to a category or one-off item."
+              onClose={() => setAddingItem(false)}
+              size="lg"
+              footer={
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button onClick={() => setAddingItem(false)} className="btn-secondary">Cancel</button>
+                  <button onClick={handleAddItem} disabled={saving || (addForm.mode === 'category' && !addForm.category_id) || (addForm.mode === 'custom' && !addForm.custom_name.trim()) || !addForm.budgeted_amount} className="btn-primary">{saving ? 'Saving...' : 'Add item'}</button>
+                </div>
+              }
+            >
+              <div>
                 <div className="flex gap-2 mb-4">
                   <button onClick={() => setAddForm({ ...addForm, mode: 'category', category_id: '', custom_name: '' })} className={`rounded-lg px-3 py-1.5 text-xs font-medium cursor-pointer ${addForm.mode === 'category' ? 'bg-cta text-white' : 'bg-surface-alt text-text-muted'}`}>From category</button>
                   <button onClick={() => setAddForm({ ...addForm, mode: 'custom', category_id: '', custom_name: '' })} className={`rounded-lg px-3 py-1.5 text-xs font-medium cursor-pointer ${addForm.mode === 'custom' ? 'bg-cta text-white' : 'bg-surface-alt text-text-muted'}`}>Custom / one-off</button>
@@ -554,19 +621,60 @@ export function BudgetPage() {
                     </label>
                   </div>
                 </div>
-                <div className="mt-4 flex gap-2">
-                  <button onClick={handleAddItem} disabled={saving || (addForm.mode === 'category' && !addForm.category_id) || (addForm.mode === 'custom' && !addForm.custom_name.trim()) || !addForm.budgeted_amount} className="btn-primary">{saving ? 'Saving...' : 'Add item'}</button>
-                  <button onClick={() => setAddingItem(false)} className="btn-secondary">Cancel</button>
-                </div>
               </div>
-            )}
+            </Modal>
+
+            {/* Edit budget item */}
+            <Modal
+              open={!!editingItem}
+              title="Edit budget item"
+              description={editingRow ? `Planned amount for ${getItemName(editingRow)}` : undefined}
+              onClose={() => setEditingItem(null)}
+              footer={
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button onClick={() => setEditingItem(null)} className="btn-secondary">Cancel</button>
+                  <button onClick={() => editingItem && handleUpdateItem(editingItem)} disabled={saving} className="btn-primary">
+                    {saving ? 'Saving...' : 'Update item'}
+                  </button>
+                </div>
+              }
+            >
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="edit-budget-amount" className="label">Planned amount</label>
+                  <input
+                    id="edit-budget-amount"
+                    type="number"
+                    inputMode="decimal"
+                    value={editForm.budgeted_amount}
+                    onChange={(e) => setEditForm({ ...editForm, budgeted_amount: e.target.value })}
+                    className="input-field"
+                    placeholder="0"
+                    autoFocus
+                  />
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={editForm.is_recurring} onChange={(e) => setEditForm({ ...editForm, is_recurring: e.target.checked })} className="h-4 w-4 rounded border-border text-cta focus:ring-cta" />
+                  <span className="text-sm text-text">Recurs every month</span>
+                </label>
+              </div>
+            </Modal>
 
             {/* Payment form */}
-            {payingItem && (
-              <div className="card border-accent/30">
-                <h3 className="mb-4 text-lg font-semibold text-text">
-                  Record payment — {getItemName(budgetItems.find((i) => i.id === payingItem)!)}
-                </h3>
+            <Modal
+              open={!!payingItem}
+              title={payingItemRow ? `Record payment — ${getItemName(payingItemRow)}` : 'Record payment'}
+              description="Money paid against this budget item. It is deducted from the account you choose."
+              onClose={() => setPayingItem(null)}
+              size="lg"
+              footer={
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button onClick={() => setPayingItem(null)} className="btn-secondary">Cancel</button>
+                  <button onClick={() => { const item = budgetItems.find((i) => i.id === payingItem); if (item) handleRecordPayment(item) }} disabled={paying || !payForm.amount || !payForm.account_id} className="btn-primary">{paying ? 'Saving...' : 'Record payment'}</button>
+                </div>
+              }
+            >
+              <div>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
                     <label htmlFor="pay-amount" className="label">Amount paid (₦)</label>
@@ -588,12 +696,8 @@ export function BudgetPage() {
                     <input id="pay-notes" type="text" value={payForm.notes} onChange={(e) => setPayForm({ ...payForm, notes: e.target.value })} className="input-field" placeholder="e.g. First payment" />
                   </div>
                 </div>
-                <div className="mt-4 flex gap-2">
-                  <button onClick={() => { const item = budgetItems.find((i) => i.id === payingItem); if (item) handleRecordPayment(item) }} disabled={paying || !payForm.amount || !payForm.account_id} className="btn-primary">{paying ? 'Saving...' : 'Record payment'}</button>
-                  <button onClick={() => setPayingItem(null)} className="btn-secondary">Cancel</button>
-                </div>
               </div>
-            )}
+            </Modal>
 
             {/* Budget items */}
             <div className="space-y-3">
@@ -624,7 +728,6 @@ export function BudgetPage() {
                   ) : (
                     budgetItems.map((item) => {
                       const remaining = item.budgeted_amount - item.spent_amount
-                      const isEditing = editingItem === item.id
                       const payments = itemPayments[item.id] || []
                       const isFullyPaid = item.spent_amount >= item.budgeted_amount
                       const pctUsed = item.budgeted_amount > 0 ? Math.min((item.spent_amount / item.budgeted_amount) * 100, 999) : 0
@@ -644,19 +747,9 @@ export function BudgetPage() {
                                 {!item.category_id && item.custom_name && <span className="rounded bg-surface-alt px-1.5 py-0.5 text-[10px] text-text-muted">Custom</span>}
                                 {isFullyPaid && <span className="rounded bg-success/10 px-1.5 py-0.5 text-[10px] font-medium text-success">Paid</span>}
                               </div>
-                              {isEditing && (
-                                <label className="mt-1 flex items-center gap-1 text-xs text-text-muted">
-                                  <input type="checkbox" checked={editForm.is_recurring} onChange={(e) => setEditForm({ ...editForm, is_recurring: e.target.checked })} className="h-3 w-3 rounded border-border text-cta focus:ring-cta" />
-                                  Recurs every month
-                                </label>
-                              )}
                             </Td>
                             <Td align="right">
-                              {isEditing ? (
-                                <input type="number" value={editForm.budgeted_amount} onChange={(e) => setEditForm({ ...editForm, budgeted_amount: e.target.value })} className="input-field w-28 text-right text-sm" aria-label="Planned amount" />
-                              ) : (
-                                <span className="font-medium">{formatCurrency(item.budgeted_amount)}</span>
-                              )}
+                              <span className="font-medium">{formatCurrency(item.budgeted_amount)}</span>
                             </Td>
                             <Td align="right">
                               <span className={item.spent_amount > 0 ? 'font-medium' : 'text-text-muted'}>{formatCurrency(item.spent_amount)}</span>
@@ -680,13 +773,7 @@ export function BudgetPage() {
                               </div>
                             </Td>
                             <Td align="right" sticky>
-                              {isEditing ? (
-                                <div className="flex justify-end gap-1">
-                                  <IconButton icon={Check} label="Save" disabled={saving} variant="success" onClick={() => handleUpdateItem(item.id)} />
-                                  <IconButton icon={X} label="Cancel" onClick={() => setEditingItem(null)} />
-                                </div>
-                              ) : (
-                                <div className="row-actions">
+                              <div className="row-actions">
                                   {!isFullyPaid && (
                                     <button
                                       onClick={() => { setPayingItem(item.id); setPayForm({ amount: '', date: new Date().toISOString().split('T')[0], account_id: '', notes: '' }) }}
@@ -706,8 +793,7 @@ export function BudgetPage() {
                                     onClick={() => { setEditingItem(item.id); setEditForm({ budgeted_amount: String(item.budgeted_amount), is_recurring: item.is_recurring }) }}
                                   />
                                   <IconButton icon={Trash2} label="Delete" variant="danger" onClick={() => handleDeleteItem(item.id)} />
-                                </div>
-                              )}
+                              </div>
                             </Td>
                           </tr>
 

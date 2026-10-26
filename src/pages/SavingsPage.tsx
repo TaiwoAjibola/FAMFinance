@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useHousehold } from '@/contexts/HouseholdContext'
 import { formatCurrency } from '@/lib/utils'
 import { Layout } from '@/components/layout/Layout'
+import { Modal, ModalFormFooter } from '@/components/ui/Modal'
 import { IconButton } from '@/components/ui/IconButton'
 import { Plus, PiggyBank, Target, Pencil, Trash2, Wallet, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react'
 import type { SavingsGoal, Account } from '@/types'
@@ -225,12 +226,22 @@ export function SavingsPage() {
         </div>
 
         {/* Goal form */}
-        {showForm && (
-          <div className="card border-accent/30">
-            <h3 className="mb-4 text-lg font-semibold text-text">
-              {editingGoal ? 'Edit savings goal' : 'Create savings goal'}
-            </h3>
-            <form onSubmit={handleCreateGoal} className="space-y-4">
+        <Modal
+          open={showForm}
+          title={editingGoal ? 'Edit savings goal' : 'Create savings goal'}
+          description="A target you're saving towards, and where the money is kept."
+          onClose={() => { setShowForm(false); setEditingGoal(null) }}
+          size="lg"
+          footer={
+            <ModalFormFooter
+              formId="goal-form"
+              submitLabel={editingGoal ? 'Update goal' : 'Create goal'}
+              saving={saving}
+              onCancel={() => { setShowForm(false); setEditingGoal(null) }}
+            />
+          }
+        >
+            <form id="goal-form" onSubmit={handleCreateGoal} className="space-y-4">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label htmlFor="name" className="label">Goal name</label>
@@ -296,25 +307,38 @@ export function SavingsPage() {
                   />
                 </div>
               </div>
-              <div className="flex gap-2">
-                <button type="submit" disabled={saving} className="btn-primary">
-                  {saving ? 'Saving...' : editingGoal ? 'Update goal' : 'Create goal'}
-                </button>
-                <button type="button" onClick={() => { setShowForm(false); setEditingGoal(null) }} className="btn-secondary">
-                  Cancel
-                </button>
-              </div>
             </form>
-          </div>
-        )}
+        </Modal>
 
         {/* Contribute / withdraw form */}
-        {contributionGoal && (
-          <div className="card border-accent/30">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-lg font-semibold text-text">
-                {contributionType === 'contribution' ? 'Save into' : 'Withdraw from'} {contributionGoal.name}
-              </h3>
+        <Modal
+          open={!!contributionGoal}
+          title={contributionGoal ? `${contributionType === 'contribution' ? 'Save into' : 'Withdraw from'} ${contributionGoal.name}` : 'Move money'}
+          description="Recorded as a transfer between your accounts, so household totals stay accurate."
+          onClose={() => { setContributionGoal(null); setContributionForm({ amount: '', date: new Date().toISOString().split('T')[0], notes: '', from_account_id: '' }) }}
+          size="lg"
+          footer={
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => { setContributionGoal(null); setContributionForm({ amount: '', date: new Date().toISOString().split('T')[0], notes: '', from_account_id: '' }) }}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleContribution}
+                disabled={contributing || !contributionForm.amount || !contributionForm.from_account_id || !contributionGoal?.destination_account_id}
+                className="btn-primary"
+              >
+                <Wallet className="h-4 w-4" />
+                {contributing ? 'Moving money...' : contributionType === 'contribution' ? 'Save into goal' : 'Withdraw from goal'}
+              </button>
+            </div>
+          }
+        >
+            <div className="space-y-4">
               <div className="flex rounded-lg bg-surface-alt p-1" role="tablist">
                 <button
                   type="button"
@@ -341,10 +365,10 @@ export function SavingsPage() {
               </div>
             </div>
             <p className="mb-4 mt-1 text-sm text-text-muted">
-              {contributionGoal.destination_account_id
-                ? <>Destination: <span className="font-medium text-text">{getAccountName(contributionGoal.destination_account_id)}</span></>
+              {contributionGoal?.destination_account_id
+                ? <>Destination: <span className="font-medium text-text">{getAccountName(contributionGoal?.destination_account_id)}</span></>
                 : <span className="text-danger">This goal has no destination account — edit the goal to set one.</span>}
-              {' '}• Progress: {formatCurrency(contributionGoal.current_amount)} of {formatCurrency(contributionGoal.target_amount)}
+              {' '}• Progress: {formatCurrency(contributionGoal?.current_amount ?? 0)} of {formatCurrency(contributionGoal?.target_amount ?? 0)}
             </p>
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -373,7 +397,7 @@ export function SavingsPage() {
                   >
                     <option value="">Select account</option>
                     {accounts
-                      .filter((a) => contributionType === 'withdrawal' || a.id !== contributionGoal.destination_account_id)
+                      .filter((a) => contributionType === 'withdrawal' || a.id !== contributionGoal?.destination_account_id)
                       .map((a) => (
                         <option key={a.id} value={a.id}>{a.name} ({formatCurrency(a.balance)})</option>
                       ))}
@@ -402,28 +426,8 @@ export function SavingsPage() {
                   placeholder="e.g. Monthly saving"
                 />
               </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleContribution}
-                  disabled={contributing || !contributionForm.amount || !contributionForm.from_account_id || !contributionGoal.destination_account_id}
-                  className="btn-primary"
-                >
-                  <Wallet className="h-4 w-4" />
-                  {contributing ? 'Moving money...' : contributionType === 'contribution' ? 'Save into goal' : 'Withdraw from goal'}
-                </button>
-                <button
-                  onClick={() => { setContributionGoal(null); setContributionForm({ amount: '', date: new Date().toISOString().split('T')[0], notes: '', from_account_id: '' }) }}
-                  className="btn-secondary"
-                >
-                  Cancel
-                </button>
-              </div>
-              <p className="text-xs text-text-muted">
-                This is recorded as a transfer between your accounts — the household's total money stays accurate.
-              </p>
             </div>
-          </div>
-        )}
+        </Modal>
 
         {/* Savings goals */}
         {loading ? (

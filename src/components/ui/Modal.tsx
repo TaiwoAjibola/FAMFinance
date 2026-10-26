@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react'
-import { X } from 'lucide-react'
+import { Loader2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface ModalProps {
@@ -21,28 +21,38 @@ interface ModalProps {
 export function Modal({ open, title, description, onClose, children, footer, size = 'md' }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null)
 
+  // Keep the latest onClose in a ref so the effect below runs only when the
+  // dialog opens or closes. Depending on onClose directly re-ran the effect on
+  // every render and pulled focus back to the first field while typing.
+  const onCloseRef = useRef(onClose)
+  useEffect(() => {
+    onCloseRef.current = onClose
+  })
+
   useEffect(() => {
     if (!open) return
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape') onCloseRef.current()
     }
     document.addEventListener('keydown', onKeyDown)
 
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
 
-    // Move focus into the dialog so keyboard and screen-reader users land here.
-    const focusTarget = panelRef.current?.querySelector<HTMLElement>(
-      'input:not([type="hidden"]), select, textarea, button'
-    )
+    // Focus the first real field so keyboard and screen-reader users land in the
+    // form; fall back to the first button only for content-only dialogs.
+    const panel = panelRef.current
+    const focusTarget =
+      panel?.querySelector<HTMLElement>('input:not([type="hidden"]):not([disabled]), select, textarea') ??
+      panel?.querySelector<HTMLElement>('button:not([aria-label="Close"])')
     focusTarget?.focus()
 
     return () => {
       document.removeEventListener('keydown', onKeyDown)
       document.body.style.overflow = previousOverflow
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
 
@@ -84,6 +94,38 @@ export function Modal({ open, title, description, onClose, children, footer, siz
           <div className="border-t border-border p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">{footer}</div>
         )}
       </div>
+    </div>
+  )
+}
+
+interface ModalFormFooterProps {
+  /** id of the <form> this footer submits. Lets the buttons live outside the form. */
+  formId: string
+  submitLabel: string
+  savingLabel?: string
+  saving?: boolean
+  disabled?: boolean
+  onCancel: () => void
+}
+
+/** Standard Cancel + Save/Update footer for form modals. */
+export function ModalFormFooter({
+  formId,
+  submitLabel,
+  savingLabel = 'Saving…',
+  saving,
+  disabled,
+  onCancel,
+}: ModalFormFooterProps) {
+  return (
+    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+      <button type="button" onClick={onCancel} className="btn-secondary">
+        Cancel
+      </button>
+      <button type="submit" form={formId} disabled={saving || disabled} className="btn-primary">
+        {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+        {saving ? savingLabel : submitLabel}
+      </button>
     </div>
   )
 }

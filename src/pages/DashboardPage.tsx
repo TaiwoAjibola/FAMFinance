@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useHousehold } from '@/contexts/HouseholdContext'
 import { formatCurrency, getCurrentMonth, getMonthLabel, getMonthStart, getMonthEnd } from '@/lib/utils'
 import { Layout } from '@/components/layout/Layout'
+import { useFinanceActions } from '@/contexts/FinanceActionsContext'
 import {
   Wallet,
   ArrowUpCircle,
@@ -36,6 +37,7 @@ interface DashboardData {
 
 export function DashboardPage() {
   const { household } = useHousehold()
+  const { openTransaction, version } = useFinanceActions()
   const [data, setData] = useState<DashboardData>({
     totalIncome: 0,
     expectedIncome: 0,
@@ -150,7 +152,7 @@ export function DashboardPage() {
     }
 
     fetchDashboard()
-  }, [household, currentMonth])
+  }, [household, currentMonth, version])
 
   if (loading) {
     return (
@@ -177,10 +179,10 @@ export function DashboardPage() {
             <h1 className="text-2xl font-bold text-text">Dashboard</h1>
             <p className="text-sm text-text-muted">{getMonthLabel(currentMonth)}</p>
           </div>
-          <Link to="/expenses" className="btn-primary">
+          <button type="button" onClick={() => openTransaction('expense')} className="btn-primary">
             <Plus className="h-4 w-4" />
-            Add transaction
-          </Link>
+            Add expense
+          </button>
         </div>
 
         {/* Key metrics */}
