@@ -214,7 +214,8 @@ export function InsightsPage() {
             {/* Links to the underlying pages */}
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               <DeepLink to="/budget" label={`Budget · ${snap.budget.items.filter((i) => i.status !== 'ok').length} need attention`} />
-              <DeepLink to="/expenses" label="Transactions" />
+              <DeepLink to="/transactions" label="Transactions" />
+              <DeepLink to="/expenses" label="Expenses & quick entry" />
               <DeepLink to="/debts" label={`Debts · ${snap.debts.filter((d) => !d.settled).length} open`} />
             </div>
 

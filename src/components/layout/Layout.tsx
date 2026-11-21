@@ -12,7 +12,6 @@ import {
   PiggyBank,
   Calendar,
   Target,
-  History,
   Settings,
   LogOut,
   Menu,
@@ -27,12 +26,12 @@ const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/accounts', label: 'Accounts', icon: Wallet },
   { path: '/income', label: 'Income', icon: ArrowDownCircle },
-  { path: '/expenses', label: 'Transactions', icon: ArrowRightLeft },
+  { path: '/expenses', label: 'Expenses', icon: ArrowUpCircle },
+  { path: '/transactions', label: 'Transactions', icon: ArrowRightLeft },
   { path: '/debts', label: 'Debts', icon: HandCoins },
   { path: '/budget', label: 'Budget', icon: Calendar },
   { path: '/planned', label: 'Planned', icon: Target },
   { path: '/savings', label: 'Savings', icon: PiggyBank },
-  { path: '/history', label: 'History', icon: History },
   { path: '/insights', label: 'AI Insights', icon: Sparkles },
 ]
 

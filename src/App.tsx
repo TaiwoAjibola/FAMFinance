@@ -45,15 +45,19 @@ const DashboardPageLazy = lazy(() => import('@/pages/DashboardPage').then(m => (
 const AccountsPageLazy = lazy(() => import('@/pages/AccountsPage').then(m => ({ default: m.AccountsPage })))
 const IncomePageLazy = lazy(() => import('@/pages/IncomePage').then(m => ({ default: m.IncomePage })))
 const ExpensesPageLazy = lazy(() => import('@/pages/ExpensesPage').then(m => ({ default: m.ExpensesPage })))
+const TransactionsPageLazy = lazy(() => import('@/pages/TransactionsPage').then(m => ({ default: m.TransactionsPage })))
 const BudgetPageLazy = lazy(() => import('@/pages/BudgetPage').then(m => ({ default: m.BudgetPage })))
 const PlannedExpensesPageLazy = lazy(() => import('@/pages/PlannedExpensesPage').then(m => ({ default: m.PlannedExpensesPage })))
 const SavingsPageLazy = lazy(() => import('@/pages/SavingsPage').then(m => ({ default: m.SavingsPage })))
-const HistoryPageLazy = lazy(() => import('@/pages/HistoryPage').then(m => ({ default: m.HistoryPage })))
 const HouseholdPageLazy = lazy(() => import('@/pages/HouseholdPage').then(m => ({ default: m.HouseholdPage })))
 const SettingsPageLazy = lazy(() => import('@/pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
 const InvitePageLazy = lazy(() => import('@/pages/InvitePage').then(m => ({ default: m.InvitePage })))
 const DebtsPageLazy = lazy(() => import('@/pages/DebtsPage').then(m => ({ default: m.DebtsPage })))
 const InsightsPageLazy = lazy(() => import('@/pages/InsightsPage').then(m => ({ default: m.InsightsPage })))
+// Admin statistics exist only in the development build; the import is removed from production.
+const AdminPageLazy = import.meta.env.DEV
+  ? lazy(() => import('@/pages/AdminPage').then(m => ({ default: m.AdminPage })))
+  : null
 
 function LoadingSpinner() {
   return (
@@ -85,15 +89,17 @@ function AppRoutes() {
         <Route path="/accounts" element={<ProtectedRoute><AccountsPageLazy /></ProtectedRoute>} />
         <Route path="/income" element={<ProtectedRoute><IncomePageLazy /></ProtectedRoute>} />
         <Route path="/expenses" element={<ProtectedRoute><ExpensesPageLazy /></ProtectedRoute>} />
+        <Route path="/transactions" element={<ProtectedRoute><TransactionsPageLazy /></ProtectedRoute>} />
         <Route path="/debts" element={<ProtectedRoute><DebtsPageLazy /></ProtectedRoute>} />
         <Route path="/budget" element={<ProtectedRoute><BudgetPageLazy /></ProtectedRoute>} />
         <Route path="/planned" element={<ProtectedRoute><PlannedExpensesPageLazy /></ProtectedRoute>} />
         <Route path="/savings" element={<ProtectedRoute><SavingsPageLazy /></ProtectedRoute>} />
-        <Route path="/history" element={<ProtectedRoute><HistoryPageLazy /></ProtectedRoute>} />
+        <Route path="/history" element={<Navigate to="/transactions" replace />} />
         <Route path="/household" element={<ProtectedRoute><HouseholdPageLazy /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><SettingsPageLazy /></ProtectedRoute>} />
         <Route path="/insights" element={<ProtectedRoute><InsightsPageLazy /></ProtectedRoute>} />
         <Route path="/invite/:token" element={<InvitePageLazy />} />
+        {AdminPageLazy && <Route path="/admin" element={<AdminPageLazy />} />}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
